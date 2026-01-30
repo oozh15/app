@@ -3,50 +3,47 @@ import pdfplumber
 import pytesseract
 import requests
 import json
+import re
 from PIL import Image
 import cv2
 import numpy as np
 from docx import Document
 
 # --------------------------------
-# APP CONFIG
+# CONFIG
 # --------------------------------
 st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
 
-# --------------------------------
-# DATASET URL (YOUR GITHUB RAW)
-# --------------------------------
 DATASET_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 # --------------------------------
-# LOAD + AUTO-FIX JSON DATASET
+# ULTRA AUTO-FIX JSON LOADER
 # --------------------------------
 @st.cache_data
 def load_dictionary():
     try:
         res = requests.get(DATASET_URL, timeout=10)
         res.raise_for_status()
-        text = res.text.strip()
+        text = res.text
 
-        # Try normal JSON load
-        try:
-            data = json.loads(text)
-            if isinstance(data, list):
-                return data
-        except json.JSONDecodeError:
-            pass
+        valid_entries = []
 
-        # AUTO-FIX: extract valid JSON array
-        start = text.find("[")
-        end = text.rfind("]") + 1
+        # Extract every JSON object {...}
+        objects = re.findall(r"\{[\s\S]*?\}", text)
 
-        if start != -1 and end != -1:
-            fixed_text = text[start:end]
-            data = json.loads(fixed_text)
-            st.warning("⚠️ Dataset had errors – auto-fixed successfully")
-            return data
+        for obj in objects:
+            try:
+                item = json.loads(obj)
+                if "word" in item and "meaning" in item:
+                    valid_entries.append(item)
+            except json.JSONDecodeError:
+                continue  # skip broken entry
 
-        st.error("❌ Dataset is not valid JSON")
+        if valid_entries:
+            st.warning(f"⚠️ Dataset auto-fixed: {len(valid_entries)} valid entries loaded")
+            return valid_entries
+
+        st.error("❌ No valid entries found in dataset")
         return []
 
     except Exception as e:
@@ -78,7 +75,7 @@ def extract_tamil_from_image(image):
     )
 
 # --------------------------------
-# PDF TEXT EXTRACTION (NO OCR)
+# PDF TEXT EXTRACTION
 # --------------------------------
 def extract_text_from_pdf(file):
     text = ""
@@ -121,12 +118,12 @@ def save_to_docx(word, meaning, synonym, antonym):
 # UI
 # --------------------------------
 st.title("📘 Tamil Professional Reader (Non-AI)")
-st.caption("PDF / Image → Extract Text → Word Meaning (From GitHub Dataset)")
+st.caption("PDF / Image → Extract Text → Word Meaning (Auto-Fixed Dataset)")
 
 if dictionary:
-    st.success(f"✅ Dataset loaded: {len(dictionary)} entries")
+    st.success(f"✅ Dictionary ready ({len(dictionary)} words)")
 else:
-    st.warning("⚠️ Dataset not loaded")
+    st.warning("⚠️ Dictionary empty")
 
 uploaded_file = st.file_uploader(
     "Upload Tamil PDF or Image",
@@ -150,7 +147,7 @@ if uploaded_file:
     )
 
 # --------------------------------
-# LOOKUP SECTION
+# LOOKUP
 # --------------------------------
 st.subheader("🔍 Word Meaning Lookup")
 selected_word = st.text_input("Paste a Tamil word here:")
@@ -158,8 +155,6 @@ selected_word = st.text_input("Paste a Tamil word here:")
 if st.button("Get Meaning"):
     if not selected_word.strip():
         st.warning("Please enter a Tamil word")
-    elif not dictionary:
-        st.error("Dataset unavailable")
     else:
         meaning, synonym, antonym = lookup_word(selected_word)
 
@@ -178,8 +173,7 @@ if st.button("Get Meaning"):
                 st.download_button(
                     "⬇️ Download as DOCX",
                     f,
-                    file_name=docx_file,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    file_name=docx_file
                 )
         else:
             st.error("Word not found in dataset ❌")
