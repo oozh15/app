@@ -6,120 +6,184 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import base64
-from docx import Document
 import io
+import cv2
+import numpy as np
+import unicodedata
+from docx import Document
 
-# --- Page Config ---
-st.set_page_config(page_title="Tamil Lexicon Enterprise", layout="wide")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="Tamil Professional Lexicon", layout="wide")
 
-# --- 1. IMPROVED MEANING ENGINE (Normalization + Online Fetch) ---
-def fetch_meaning_advanced(word):
-    """
-    Normalizes Tamil words by stripping suffixes and fetches 
-    meanings from online academic datasets.
-    """
-    # Clean non-Tamil characters
-    clean_word = re.sub(r'[^\u0b80-\u0bff]', '', word)
-    
-    # Suffix Stripping Logic (Normalizing conjugated words like 'சேனலுக்கு' to 'சேனல்')
-    suffixes = ['இருந்து', 'உக்காக', 'க்காக', 'உடைய', 'ோடு', 'இடம்', 'ுக்கு', 'உக்கு', 'ை', 'ால்', 'கு', 'ின்', 'இல்']
-    
-    root_word = clean_word
-    for s in suffixes:
-        if clean_word.endswith(s) and len(clean_word) > 3:
-            root_word = clean_word[:-len(s)]
-            break
+st.markdown("""
+<style>
+.result-card {
+    background:#ffffff;
+    padding:20px;
+    border-radius:12px;
+    border-left:8px solid #0d47a1;
+    box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+.dataset-tag {
+    background:#e3f2fd;
+    color:#0d47a1;
+    padding:4px 8px;
+    border-radius:6px;
+    font-size:12px;
+    font-weight:bold;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    # Federated search across multiple online sources
-    sources = [
-        f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={root_word}",
-        f"https://www.webtamildictionary.com/english-to-tamil.php?word={root_word}"
+# ---------------- OCR PREPROCESSING ----------------
+def preprocess_image(img):
+    img = np.array(img)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    blur = cv2.GaussianBlur(gray, (5,5), 0)
+    thresh = cv2.adaptiveThreshold(
+        blur, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 31, 2
+    )
+    return thresh
+
+# ---------------- TAMIL NORMALIZATION ----------------
+def normalize_tamil(word):
+    word = unicodedata.normalize("NFC", word)
+    word = re.sub(r'[^\u0b80-\u0bff]', '', word)
+    return word
+
+def get_root_word(word):
+    word = normalize_tamil(word)
+    suffixes = [
+        'இருந்து','உடைய','உக்காக','க்காக','த்தால்',
+        'ோடு','இடம்','உக்கு','ுக்கு','ின்','இல்','ஆல்','ை'
     ]
-    
-    meaning = "No direct match found in online datasets."
-    antonym = "Not available"
-    found_source = "None"
+    for s in suffixes:
+        if word.endswith(s) and len(word) > 4:
+            return word[:-len(s)]
+    return word
 
-    for url in sources:
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            res = requests.get(url, headers=headers, timeout=5)
-            if res.status_code == 200:
-                soup = BeautifulSoup(res.text, "html.parser")
-                # Target common dictionary containers
-                meaning_div = soup.find("div", {"class": "translation"}) or \
-                              soup.find("div", {"class": "dictionaryMeaning"})
-                
-                if meaning_div:
-                    meaning = meaning_div.get_text(strip=True)
-                    found_source = "Online Lexicon Aggregator"
-                    
-                    # Heuristic search for Antonyms in the page text
-                    page_text = soup.get_text()
-                    if "Antonym:" in page_text:
-                        antonym = page_text.split("Antonym:")[1].split("\n")[0].strip()
-                    break 
-        except:
-            continue
+# ---------------- ONLINE DATASET FETCH ----------------
+def fetch_meaning(word):
+    result = {
+        "meaning": "Meaning not found",
+        "antonym": "Not found",
+        "source": "Tamilcube Online Dictionary"
+    }
 
-    return root_word, meaning, antonym, found_source
+    url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-# --- 2. UI & EXTRACTION WORKFLOW ---
+    try:
+        r = requests.get(url, headers=headers, timeout=8)
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        meaning_block = soup.find("div", id="ContentPlaceHolder1_lblMeaning")
+        if meaning_block:
+            result["meaning"] = meaning_block.get_text(strip=True)
+
+        text = soup.get_text(separator="\n")
+        for line in text.splitlines():
+            if "Antonym" in line or "எதிர்ச்சொல்" in line:
+                result["antonym"] = line.strip()
+                break
+
+    except:
+        pass
+
+    return result
+
+# ---------------- DOCX EXPORT ----------------
+def create_docx(data):
+    doc = Document()
+    doc.add_heading("Tamil Lexicon Report", 0)
+
+    for d in data:
+        doc.add_paragraph(f"Word: {d['word']}").bold = True
+        doc.add_paragraph(f"Meaning: {d['meaning']}")
+        doc.add_paragraph(f"Antonym: {d['antonym']}")
+        doc.add_paragraph(f"Source: {d['source']}")
+        doc.add_paragraph("-" * 30)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+# ---------------- UI ----------------
 st.title("📘 Tamil Professional Lexicon Reader")
-st.markdown("##### Verified Online Datasets | Accurate Morphological Matching")
+st.info("PDF / Image → Select Tamil word → Live meaning (No AI, No API)")
 
-uploaded_file = st.file_uploader("Upload PDF or Image", type=['pdf', 'png', 'jpg'])
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-if uploaded_file:
-    file_bytes = uploaded_file.read()
-    
-    col1, col2 = st.columns([1, 1])
-    
+uploaded = st.file_uploader("Upload PDF or Image", type=["pdf","png","jpg","jpeg"])
+
+if uploaded:
+    file_bytes = uploaded.read()
+
+    col1, col2 = st.columns([1,1])
+
+    # ---------- DOCUMENT VIEW ----------
     with col1:
-        st.subheader("📄 Document View")
-        if uploaded_file.type == "application/pdf":
-            base64_pdf = base64.b64encode(file_bytes).decode('utf-8')
-            pdf_html = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800"></iframe>'
-            st.markdown(pdf_html, unsafe_allow_html=True)
+        st.subheader("📄 Document")
+        if uploaded.type == "application/pdf":
+            pdf64 = base64.b64encode(file_bytes).decode()
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{pdf64}" width="100%" height="600"></iframe>',
+                unsafe_allow_html=True
+            )
         else:
-            st.image(uploaded_file)
+            st.image(uploaded)
 
+    # ---------- OCR + ANALYSIS ----------
     with col2:
-        st.subheader("🔍 Lexicon Results")
-        
-        # Extraction logic (OCR for PDF/Images)
-        with st.spinner("Extracting text..."):
-            if uploaded_file.type == "application/pdf":
-                images = convert_from_bytes(file_bytes)
-            else:
-                images = [Image.open(io.BytesIO(file_bytes))]
-            
-            extracted_text = ""
-            for img in images:
-                extracted_text += pytesseract.image_to_string(img, lang='tam')
-            
-            lines = [l.strip() for l in extracted_text.split('\n') if len(l.strip()) > 5]
+        st.subheader("🔍 Extract & Analyze")
 
-        if lines:
-            selected_line = st.selectbox("Select a line to analyze:", lines)
-            words = selected_line.split()
-            target = st.radio("Pick a word to decode:", words, horizontal=True)
-            
-            if target:
-                root, mean, ant, src = fetch_meaning_advanced(target)
-                
+        with st.spinner("Extracting Tamil text..."):
+            images = convert_from_bytes(file_bytes) if uploaded.type == "application/pdf" else [Image.open(uploaded)]
+            text = ""
+
+            for img in images:
+                processed = preprocess_image(img)
+                text += pytesseract.image_to_string(processed, lang="tam", config="--psm 6")
+
+        tamil_lines = [l for l in text.split("\n") if len(l.strip()) > 5]
+
+        if tamil_lines:
+            line = st.selectbox("Select a line:", tamil_lines)
+
+            words = re.findall(r'[\u0b80-\u0bff]{3,}', line)
+
+            if words:
+                word = st.radio("Select a word:", words)
+
+                root = get_root_word(word)
+                data = fetch_meaning(root)
+
                 st.markdown(f"""
-                <div style="background:white; padding:20px; border-left:8px solid #004d99; border-radius:10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    <h3 style="color:#004d99; margin:0;">{target}</h3>
-                    <p style="font-size:0.85em; color:gray;">Identified Root: <b>{root}</b></p>
-                    <hr>
-                    <p><b>Meaning:</b><br>{mean}</p>
-                    <p><b>Antonym:</b> {ant}</p>
-                    <p style="font-size:0.8em; color:navy;">Source: {src}</p>
+                <div class="result-card">
+                    <span class="dataset-tag">{data['source']}</span>
+                    <h3>{word}</h3>
+                    <p><b>Root Word:</b> {root}</p>
+                    <p><b>Meaning:</b> {data['meaning']}</p>
+                    <p><b>Antonym:</b> {data['antonym']}</p>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.warning("Could not detect clear Tamil text lines.")
 
-st.markdown("---")
-st.caption("Standard 2026 Lexicon Integration | Verified Online Datasets")
+                if st.button("➕ Add to Report"):
+                    st.session_state.history.append({
+                        "word": word,
+                        "meaning": data["meaning"],
+                        "antonym": data["antonym"],
+                        "source": data["source"]
+                    })
+                    st.success("Added to report")
+
+# ---------------- DOWNLOAD REPORT ----------------
+if st.session_state.history:
+    st.divider()
+    st.subheader("📑 Research Report")
+    docx = create_docx(st.session_state.history)
+    st.download_button("⬇ Download DOCX", docx, "Tamil_Lexicon_Report.docx")
