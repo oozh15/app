@@ -2,36 +2,39 @@ import streamlit as st
 import pdfplumber
 import pytesseract
 import requests
-import json
 from PIL import Image
 import cv2
 import numpy as np
-import requests
-import json
 
+# -----------------------------
+# LOAD DICTIONARY
+# -----------------------------
 @st.cache_data
 def load_dictionary():
     url = "https://github.com/oozh15/app/raw/refs/heads/main/tamil.json"
-    response = requests.get(url)
-    response.raise_for_status()  # Will raise HTTPError if request fails
-    return json.loads(response.text)  # Load JSON safely
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()  # Safe JSON parsing
+    except requests.RequestException as e:
+        st.error(f"Failed to load dataset from GitHub: {e}")
+        return []
+    except ValueError as e:
+        st.error(f"Failed to parse JSON: {e}")
+        return []
 
 dictionary = load_dictionary()
 
+# -----------------------------
+# APP CONFIG
+# -----------------------------
 st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
+st.title("📘 Tamil Professional Reader (Non-AI)")
+st.caption("Upload PDF / Image → Copy Word → Get Meaning (From GitHub Dataset)")
 
-
-@st.cache_data
-def load_dictionary():
-    response = requests.get(DATASET_URL)
-    response.raise_for_status()
-    return json.loads(response.text)
-
-dictionary = load_dictionary()
-
-# -----------------------------------
+# -----------------------------
 # OCR FOR TAMIL
-# -----------------------------------
+# -----------------------------
 def preprocess_image(img):
     img = np.array(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -47,9 +50,9 @@ def extract_tamil_from_image(image):
     processed = preprocess_image(image)
     return pytesseract.image_to_string(processed, lang="tam", config="--psm 6")
 
-# -----------------------------------
+# -----------------------------
 # PDF TEXT EXTRACTION
-# -----------------------------------
+# -----------------------------
 def extract_text_from_pdf(file):
     text = ""
     with pdfplumber.open(file) as pdf:
@@ -57,21 +60,19 @@ def extract_text_from_pdf(file):
             text += page.extract_text() or ""
     return text
 
-# -----------------------------------
-# WORD LOOKUP (FROM DATASET ONLY)
-# -----------------------------------
+# -----------------------------
+# WORD LOOKUP (FROM DICTIONARY)
+# -----------------------------
 def lookup_word(word):
+    word = word.strip()
     for item in dictionary:
-        if item["word"] == word:
-            return item["meaning"], item["synonym"], item["antonym"]
+        if item.get("word") == word:
+            return item.get("meaning"), item.get("synonym"), item.get("antonym")
     return None, None, None
 
-# -----------------------------------
-# UI
-# -----------------------------------
-st.title("📘 Tamil Professional Reader (Non-AI)")
-st.caption("PDF / Image → Copy Word → Meaning (From GitHub Dataset)")
-
+# -----------------------------
+# FILE UPLOAD
+# -----------------------------
 uploaded_file = st.file_uploader(
     "Upload Tamil PDF or Image",
     type=["pdf", "png", "jpg", "jpeg"]
@@ -89,20 +90,22 @@ if uploaded_file:
     st.subheader("📄 Extracted Text")
     st.text_area("Copy a Tamil word:", extracted_text, height=250)
 
-# -----------------------------------
-# LOOKUP
-# -----------------------------------
+# -----------------------------
+# WORD MEANING LOOKUP
+# -----------------------------
 st.subheader("🔍 Word Meaning Lookup")
 selected_word = st.text_input("Paste a Tamil word here:")
 
 if st.button("Get Meaning"):
-    meaning, synonym, antonym = lookup_word(selected_word.strip())
-
-    if meaning:
-        st.success("Meaning Found")
-        st.markdown(f"**📌 Word:** {selected_word}")
-        st.markdown(f"**📖 Meaning:** {meaning}")
-        st.markdown(f"**🔁 Synonym:** {synonym}")
-        st.markdown(f"**⛔ Antonym:** {antonym}")
+    if not dictionary:
+        st.error("Dictionary not loaded, cannot perform lookup.")
     else:
-        st.error("Word not found in dataset")
+        meaning, synonym, antonym = lookup_word(selected_word)
+        if meaning:
+            st.success("Meaning Found ✅")
+            st.markdown(f"**📌 Word:** {selected_word}")
+            st.markdown(f"**📖 Meaning:** {meaning}")
+            st.markdown(f"**🔁 Synonym:** {synonym}")
+            st.markdown(f"**⛔ Antonym:** {antonym}")
+        else:
+            st.error("Word not found in dataset ❌")
