@@ -11,3 +11,10 @@ pdf2image
 requests
 beautifulsoup4
 streamlit-pdf-viewer
+streamlit
+requests
+beautifulsoup4
+python-docx
+pdfplumber
+pillow
+pytesseract
