@@ -18,3 +18,10 @@ python-docx
 pdfplumber
 pillow
 pytesseract
+streamlit
+requests
+beautifulsoup4
+pdfplumber
+pillow
+pytesseract
+python-docx
