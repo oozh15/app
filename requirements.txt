@@ -12,5 +12,8 @@ numpy
 Pillow
 deep-translator
 
+opencv-python-headless
+numpy
+requests
 requests
 googletrans==4.0.0-rc1
