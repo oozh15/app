@@ -7,7 +7,7 @@ import numpy as np
 import re
 import requests
 import json
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 # --- Page Config ---
 st.set_page_config(page_title="Tamil OCR Pro", layout="wide")
@@ -56,20 +56,19 @@ def extract_tamil_text(image):
     return clean_text.strip()
 
 # --- Meaning Lookup ---
-translator = Translator()
-
 @st.cache_data
 def get_meaning(word):
     word = word.strip()
+    # 1️⃣ First check local dictionary
     if word in tamil_dict:
         return tamil_dict[word]
-    else:
-        try:
-            # Fallback: Google Translate API
-            result = translator.translate(word, src='ta', dest='en')
-            return result.text
-        except:
-            return "❌ Meaning not found"
+    
+    # 2️⃣ If not found, try online translator
+    try:
+        meaning = GoogleTranslator(source='ta', target='en').translate(word)
+        return meaning
+    except:
+        return "❌ Meaning not found"
 
 # --- App UI ---
 st.title("📘 Tamil OCR Pro")
@@ -94,14 +93,12 @@ if uploaded_file:
     st.subheader("📄 Extracted Content")
     text_area = st.text_area("Final Output", extracted_full, height=400)
 
-    # Split words and let user select
-    st.subheader("🔍 Select Word to Get Meaning")
-    words = list(set(re.findall(r'\w+', extracted_full)))  # unique words
-    selected_word = st.selectbox("Select Tamil Word", [""] + words)
-
-    if selected_word:
-        meaning = get_meaning(selected_word)
-        st.markdown(f"**Meaning of '{selected_word}':** {meaning}")
+    # Word lookup
+    st.subheader("🔍 Type Word to Get Meaning")
+    typed_word = st.text_input("Enter Tamil word")
+    if typed_word:
+        meaning = get_meaning(typed_word)
+        st.markdown(f"**Meaning of '{typed_word}':** {meaning}")
 
     # Download full text
     st.download_button(
