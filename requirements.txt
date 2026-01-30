@@ -4,5 +4,10 @@ Pillow
 pdf2image
 requests
 beautifulsoup4
-
+streamlit
+pytesseract
+Pillow
+pdf2image
+requests
+beautifulsoup4
 streamlit-pdf-viewer
