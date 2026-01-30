@@ -7,154 +7,106 @@ import numpy as np
 import re
 import requests
 import json
+from googletrans import Translator
 
-# ------------------------
-# PAGE CONFIG
-# ------------------------
-st.set_page_config(page_title="Tamil OCR + Online Dictionary", layout="wide")
+# --- Page Config ---
+st.set_page_config(page_title="Tamil OCR Pro", layout="wide")
 
-# ------------------------
-# LOAD GITHUB JSON DICTIONARY
-# ------------------------
-DICT_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
+# --- System Status ---
+st.sidebar.title("⚙️ System Status")
+try:
+    ver = pytesseract.get_tesseract_version()
+    langs = pytesseract.get_languages()
+    st.sidebar.success(f"Tesseract {ver} Active")
+    if 'tam' in langs:
+        st.sidebar.success("✅ Tamil Language Loaded")
+    else:
+        st.sidebar.error("❌ Tamil Data Missing")
+except Exception as e:
+    st.sidebar.error("Tesseract not found")
 
+# --- Load Dictionary from GitHub ---
 @st.cache_data
 def load_dictionary():
+    url = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
     try:
-        res = requests.get(DICT_URL, timeout=10)
-        res.raise_for_status()
-        text = res.text
+        response = requests.get(url)
+        data = response.json()
+        return data  # { "word": "meaning", ... }
+    except:
+        return {}
 
-        # Try parsing entire JSON
-        try:
-            data = json.loads(text)
-            if isinstance(data, list):
-                return data
-        except json.JSONDecodeError:
-            pass
+tamil_dict = load_dictionary()
 
-        # Fallback: extract valid { ... } objects
-        matches = re.findall(r"\{[\s\S]*?\}", text)
-        valid = []
-        for m in matches:
-            try:
-                obj = json.loads(m)
-                if "word" in obj and "meaning" in obj:
-                    valid.append(obj)
-            except:
-                continue
-        return valid
-
-    except Exception as e:
-        st.error(f"Failed to load dictionary: {e}")
-        return []
-
-dictionary = load_dictionary()
-
-if dictionary:
-    st.sidebar.success(f"Dictionary Loaded ({len(dictionary)} entries)")
-else:
-    st.sidebar.warning("Dictionary not loaded or empty")
-
-# ------------------------
-# OCR HELPERS
-# ------------------------
+# --- OCR Preprocessing ---
 def preprocess_for_tamil(img):
-    try:
-        img_arr = np.array(img)
-        gray = cv2.cvtColor(img_arr, cv2.COLOR_RGB2GRAY)
-        gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        denoised = cv2.fastNlMeansDenoising(gray, h=10)
-        _, thresh = cv2.threshold(
-            denoised, 0, 255,
-            cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        return thresh
-    except Exception as e:
-        st.error(f"OCR Preprocessing failed: {e}")
-        return img  # fallback
+    img_array = np.array(img)
+    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return thresh
 
 def extract_tamil_text(image):
-    try:
-        processed = preprocess_for_tamil(image)
-        cfg = r'--oem 3 --psm 4 -l tam'
-        raw_text = pytesseract.image_to_string(processed, config=cfg)
-        clean_text = raw_text.replace("|", "").replace("I", "")
-        clean_text = re.sub(r"\n\s*\n", "\n\n", clean_text)
-        return clean_text.strip()
-    except Exception as e:
-        st.error(f"OCR Extraction failed: {e}")
-        return ""
+    processed = preprocess_for_tamil(image)
+    custom_config = r'--oem 3 --psm 4 -l tam'
+    raw_text = pytesseract.image_to_string(processed, config=custom_config)
+    clean_text = raw_text.replace('|', '').replace('I', '')
+    clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)
+    return clean_text.strip()
 
-# ------------------------
-# PDF → OCR
-# ------------------------
-def extract_text_from_pdf(file):
-    full_text = ""
-    try:
-        with pdfplumber.open(file) as pdf:
-            for i, page in enumerate(pdf.pages):
-                img = page.to_image(resolution=400).original
-                page_text = extract_tamil_text(img)
-                full_text += f"--- Page {i+1} ---\n{page_text}\n\n"
-    except Exception as e:
-        st.error(f"PDF processing failed: {e}")
-    return full_text
+# --- Meaning Lookup ---
+translator = Translator()
 
-# ------------------------
-# WORD LOOKUP
-# ------------------------
-def lookup_word(word):
+@st.cache_data
+def get_meaning(word):
     word = word.strip()
-    for item in dictionary:
-        if item.get("word") == word:
-            return (
-                item.get("meaning", "Meaning not available"),
-                item.get("synonym", "Synonym not available"),
-                item.get("antonym", "Antonym not available")
-            )
-    return None, None, None
-
-# ------------------------
-# UI
-# ------------------------
-st.title("📘 Tamil OCR + Online Dictionary")
-
-uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf","png","jpg","jpeg"])
-extracted_text = ""
-
-if uploaded_file:
-    st.info("Extracting Tamil text (OCR)...")
-    if uploaded_file.type == "application/pdf":
-        extracted_text = extract_text_from_pdf(uploaded_file)
+    if word in tamil_dict:
+        return tamil_dict[word]
     else:
         try:
-            img = Image.open(uploaded_file)
-            extracted_text = extract_tamil_text(img)
-        except Exception as e:
-            st.error(f"Image processing failed: {e}")
+            # Fallback: Google Translate API
+            result = translator.translate(word, src='ta', dest='en')
+            return result.text
+        except:
+            return "❌ Meaning not found"
 
-    st.subheader("📄 Extracted Text")
-    st.text_area("Copy a Tamil word from below:", extracted_text, height=400)
+# --- App UI ---
+st.title("📘 Tamil OCR Pro")
+st.markdown("Extract text from PDFs/Images & get meanings of Tamil words instantly.")
 
-# ------------------------
-# LOOKUP SECTION
-# ------------------------
-st.subheader("🔍 Word Meaning Lookup")
+uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
-selected_word = st.text_input("Paste a Tamil word here:")
-
-if st.button("Get Meaning"):
-    if not selected_word.strip():
-        st.warning("Please enter a Tamil word")
-    else:
-        meaning, synonym, antonym = lookup_word(selected_word)
-
-        if meaning:
-            st.success("Meaning Found ✅")
-            st.markdown(f"**📌 Word:** {selected_word}")
-            st.markdown(f"**📖 Meaning:** {meaning}")
-            st.markdown(f"**🔁 Synonym:** {synonym}")
-            st.markdown(f"**⛔ Antonym:** {antonym}")
+if uploaded_file:
+    extracted_full = ""
+    with st.spinner("Processing Tamil Text..."):
+        if uploaded_file.type == "application/pdf":
+            with pdfplumber.open(uploaded_file) as pdf:
+                for i, page in enumerate(pdf.pages):
+                    img = page.to_image(resolution=500).original
+                    page_text = extract_tamil_text(img)
+                    extracted_full += f"--- Page {i+1} ---\n{page_text}\n\n"
         else:
-            st.error("Word not found in the dictionary ❌")
+            img = Image.open(uploaded_file)
+            extracted_full = extract_tamil_text(img)
+
+    # Display extracted text
+    st.subheader("📄 Extracted Content")
+    text_area = st.text_area("Final Output", extracted_full, height=400)
+
+    # Split words and let user select
+    st.subheader("🔍 Select Word to Get Meaning")
+    words = list(set(re.findall(r'\w+', extracted_full)))  # unique words
+    selected_word = st.selectbox("Select Tamil Word", [""] + words)
+
+    if selected_word:
+        meaning = get_meaning(selected_word)
+        st.markdown(f"**Meaning of '{selected_word}':** {meaning}")
+
+    # Download full text
+    st.download_button(
+        label="Download as Text File",
+        data=extracted_full,
+        file_name="extracted_tamil_text.txt",
+        mime="text/plain"
+    )
