@@ -11,3 +11,4 @@ opencv-python-headless
 numpy
 Pillow
 requests
+googletrans==4.0.0-rc1
