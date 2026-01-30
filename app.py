@@ -1,85 +1,89 @@
 import streamlit as st
-import pytesseract
-from PIL import Image
-from pdf2image import convert_from_bytes
+from streamlit_pdf_viewer import pdf_viewer
 import requests
 from bs4 import BeautifulSoup
-import base64
 
-# --- பக்க வடிவமைப்பு ---
-st.set_page_config(page_title="தமிழ் வாசிப்பு உதவியாளர்", layout="wide")
+# --- பக்க அமைப்பு ---
+st.set_page_config(page_title="தமிழ் ஸ்மார்ட் ரீடர்", layout="wide")
 
-# CSS: உயர்தர தோற்றத்திற்காக
 st.markdown("""
     <style>
-    .meaning-box { 
-        padding: 20px; 
-        border-radius: 10px; 
-        background-color: #ffffff; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-left: 5px solid #004d99;
+    .selected-box {
+        background-color: #e8f4f8;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #004d99;
+        margin-bottom: 20px;
     }
-    .pdf-container { border: 2px solid #ddd; border-radius: 10px; }
+    .meaning-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 6px solid #b22222;
+        box-shadow: 2px 2px 12px rgba(0,0,0,0.1);
+    }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-def fetch_tamil_data(word):
-    """தமிழ் அகராதி டேட்டாசெட் இணைப்பு"""
+def get_tamil_meaning(word):
+    """அகராதி தரவுத்தள இணைப்பு"""
     url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
     try:
         response = requests.get(url, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
-        meaning_div = soup.find("div", {"class": "translation"})
-        return meaning_div.text.strip() if meaning_div else None
+        meaning = soup.find("div", {"class": "translation"})
+        return meaning.text.strip() if meaning else "பொருள் கிடைக்கவில்லை."
     except:
-        return None
+        return "இணைப்பு பிழை."
 
-# --- தலைப்பு ---
-st.title("📖 தமிழ் 'ஸ்மார்ட்' ரீடர் (Smart Reader)")
-st.write("PDF வாசிக்கும்போதே கடினமான சொற்களுக்கு விளக்கம் பெறுங்கள்.")
+# --- UI ---
+st.title("🎯 இன்டராக்டிவ் தமிழ் ரீடர் (Touch to Meanings)")
+st.write("PDF-இல் உள்ள வரிகளைத் தொட்டு (Click) உடனே பொருள் அறியுங்கள்.")
 
-uploaded_file = st.file_uploader("PDF கோப்பைப் பதிவேற்றவும்", type=['pdf'])
+uploaded_file = st.file_uploader("PDF பதிவேற்றவும்", type=['pdf'])
 
 if uploaded_file:
-    # PDF-ஐ திரையில் காட்ட தயார் செய்தல்
-    base64_pdf = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-
-    # இரண்டு பகுதிகளாகப் பிரித்தல்
-    col1, col2 = st.columns([1.5, 1])
+    col1, col2 = st.columns([1.2, 0.8])
 
     with col1:
-        st.subheader("📄 உங்கள் ஆவணம்")
-        st.markdown(f'<div class="pdf-container">{pdf_display}</div>', unsafe_allow_html=True)
+        st.subheader("📄 PDF திரை")
+        # annotations_on_text_click=True என்பதுதான் சொல்லைத் தொட அனுமதிக்கும்
+        v = pdf_viewer(
+            input=uploaded_file.getvalue(),
+            width=700,
+            annotations_on_text_click=True
+        )
 
     with col2:
-        st.subheader("🔍 சொல் விளக்கம்")
-        st.write("வாசிக்கும்போது கடினமாகத் தோன்றும் சொல்லைக் கீழே பதிவிடவும்:")
+        st.subheader("🔍 விளக்கப் பகுதி")
         
-        target_word = st.text_input("சொல்லை உள்ளிடவும் (எ.கா: அறம், கொள்கை)", key="search_word")
-        
-        show_meaning = st.checkbox("விளக்கம் காட்டவா?", value=True)
+        # பயனர் தொட்ட சொல் அல்லது வரி இங்கே பிடிபடும்
+        if v and 'text' in v:
+            selected_text = v['text']
+            st.markdown(f'<div class="selected-box"><b>நீங்கள் தேர்ந்தெடுத்தது:</b><br>{selected_text}</div>', unsafe_allow_html=True)
+            
+            # வரியிலிருந்து சொற்களைத் தேர்ந்தெடுக்க ஒரு ஆப்ஷன்
+            words = selected_text.split()
+            target_word = st.selectbox("விளக்கம் வேண்டிய சொல்லைத் தேர்வு செய்யவும்:", words)
 
-        if target_word and show_meaning:
-            with st.spinner("தேடுகிறது..."):
-                meaning = fetch_tamil_data(target_word)
+            if target_word:
+                res = get_tamil_meaning(target_word.strip(",.?!"))
                 
-                if meaning:
-                    st.markdown(f"""
-                    <div class="meaning-box">
-                        <h3 style='color: #004d99;'>சொல்: {target_word}</h3>
-                        <p><b>பொருள் (Meaning):</b> {meaning}</p>
+                st.markdown(f"""
+                    <div class="meaning-card">
+                        <h3 style='color: #b22222;'>சொல் விளக்கம்</h3>
+                        <p><b>தேர்வு:</b> {target_word}</p>
+                        <p><b>பொருள்:</b> {res}</p>
                         <hr>
-                        <p><b>உயர்தர விளக்கம்:</b><br>
-                        1. இந்தச் சொல் ஆவணத்தில் ஆழமான கருத்தை உணர்த்தப் பயன்படுத்தப்பட்டுள்ளது.<br>
-                        2. இதன் இலக்கியப் பயன்பாடு மற்றும் இலக்கணப் பொருள் மிக முக்கியமானது.</p>
+                        <p style='color: #555;'>
+                        <b>நிலைத்த விளக்கம்:</b><br>
+                        1. '{target_word}' என்பது உயர்தர தமிழ் ஆவணங்களில் பயன்படுத்தப்படும் ஒரு சொல்லாகும்.<br>
+                        2. இதன் விரிவான விளக்கம்: {res}
+                        </p>
                     </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # இதர தகவல்கள்
-                    st.success(f"✅ இந்தச் சொல் வெற்றிகரமாக அகராதியிலிருந்து கண்டறியப்பட்டது.")
-                else:
-                    st.warning("மன்னிக்கவும், இந்தச் சொல் அகராதியில் இல்லை.")
+                """, unsafe_allow_html=True)
+        else:
+            st.info("PDF-இல் உள்ள ஒரு வரியை மவுஸ் மூலம் கிளிக் செய்யவும்.")
 
 st.markdown("---")
-st.caption("Standard High-Level Tamil Lexicon System | Real-time Dataset Connection")
+st.caption("Advanced OCR-less Interaction | Tamil Lexicon Online Run 2026")
