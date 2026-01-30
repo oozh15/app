@@ -2,16 +2,22 @@ import streamlit as st
 import pdfplumber
 import pytesseract
 import requests
-from bs4 import BeautifulSoup
 from PIL import Image
 import cv2
 import numpy as np
 from docx import Document
-
-st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
+import json
+from difflib import get_close_matches
 
 # -------------------------------
-# OCR IMPROVEMENT FOR TAMIL
+# Streamlit page setup
+# -------------------------------
+st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
+st.title("📘 Tamil Professional Reader (Non-AI)")
+st.caption("PDF / Image → Copy Word → Lookup Meaning & Antonyms")
+
+# -------------------------------
+# OCR IMAGE PREPROCESSING
 # -------------------------------
 def preprocess_image(img):
     img = np.array(img)
@@ -44,24 +50,48 @@ def extract_text_from_pdf(file):
     return text
 
 # -------------------------------
-# ONLINE DICTIONARY FETCH (NO AI)
+# LOAD TAMIL DICTIONARY FROM GITHUB
+# -------------------------------
+GITHUB_URL = "https://raw.githubusercontent.com/virtualvinodh/Tamil-Word-Dataset/main/tamil_words.json"
+
+@st.cache_data
+def load_tamil_dataset():
+    try:
+        res = requests.get(GITHUB_URL, timeout=10)
+        res.raise_for_status()
+        data = json.loads(res.text)
+        return data
+    except Exception as e:
+        st.error(f"Failed to load dataset: {e}")
+        return {}
+
+tamil_dict = load_tamil_dataset()
+
+# -------------------------------
+# NORMALIZE WORD (strip suffixes)
+# -------------------------------
+def normalize_word(word):
+    suffixes = ["ஆர்", "அர்", "இவர்", "எவர்", "உர்கள்", "இர்கள்", "க்கள்", "ர்"]
+    for s in suffixes:
+        if word.endswith(s):
+            word = word[:-len(s)]
+    return word
+
+# -------------------------------
+# FETCH MEANING WITH FUZZY MATCH
 # -------------------------------
 def fetch_meaning(word):
-    url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
-    res = requests.get(url, timeout=10)
-
-    if res.status_code != 200:
-        return "Meaning not found", "—"
-
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    meaning_div = soup.find("div", {"class": "dictionaryMeaning"})
-    antonym_div = soup.find("div", text=lambda t: t and "Antonym" in t)
-
-    meaning = meaning_div.get_text(strip=True) if meaning_div else "Meaning not available"
-    antonym = antonym_div.get_text(strip=True) if antonym_div else "Not available"
-
-    return meaning, antonym
+    word = normalize_word(word.strip())
+    if word in tamil_dict:
+        return tamil_dict[word].get("meaning", "Meaning not available"), tamil_dict[word].get("antonym", "Not available")
+    
+    # Fuzzy match
+    matches = get_close_matches(word, tamil_dict.keys(), n=1, cutoff=0.6)
+    if matches:
+        closest = matches[0]
+        return tamil_dict[closest].get("meaning", "Meaning not available"), tamil_dict[closest].get("antonym", "Not available")
+    
+    return "Meaning not found", "Not available"
 
 # -------------------------------
 # DOCX EXPORT
@@ -77,11 +107,8 @@ def save_to_docx(word, meaning, antonym):
     return file_name
 
 # -------------------------------
-# UI
+# FILE UPLOADER
 # -------------------------------
-st.title("📘 Tamil Professional Reader (Non-AI)")
-st.caption("PDF / Image → Select Word → Meaning & Antonyms")
-
 uploaded_file = st.file_uploader(
     "Upload Tamil PDF or Image",
     type=["pdf", "png", "jpg", "jpeg"]
@@ -97,7 +124,7 @@ if uploaded_file:
         extracted_text = extract_tamil_from_image(image)
 
     st.subheader("📄 Extracted Text")
-    st.text_area("Copy any Tamil word from below:", extracted_text, height=250)
+    st.text_area("Copy any Tamil word from below:", extracted_text, height=300)
 
 # -------------------------------
 # WORD LOOKUP
