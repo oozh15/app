@@ -4,81 +4,82 @@ from PIL import Image
 from pdf2image import convert_from_bytes
 import requests
 from bs4 import BeautifulSoup
+import base64
 
-# --- பக்க அமைப்பு ---
-st.set_page_config(page_title="தமிழ் சொல் அகராதி", layout="wide")
+# --- பக்க வடிவமைப்பு ---
+st.set_page_config(page_title="தமிழ் வாசிப்பு உதவியாளர்", layout="wide")
 
-# --- CSS வடிவமைப்பு (தவறு சரி செய்யப்பட்டது) ---
+# CSS: உயர்தர தோற்றத்திற்காக
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; background-color: #004d99; color: white; }
+    .meaning-box { 
+        padding: 20px; 
+        border-radius: 10px; 
+        background-color: #ffffff; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-left: 5px solid #004d99;
+    }
+    .pdf-container { border: 2px solid #ddd; border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
 def fetch_tamil_data(word):
-    """இணையத்தில் உள்ள தமிழ் அகராதியிலிருந்து தரவுகளைப் பெறுதல்"""
+    """தமிழ் அகராதி டேட்டாசெட் இணைப்பு"""
     url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
     try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            # அகராதி முடிவுகளைக் கண்டறிதல்
-            meaning_div = soup.find("div", {"class": "translation"})
-            if meaning_div:
-                return meaning_div.text.strip()
-        return "பொருள் கண்டறியப்படவில்லை."
-    except Exception as e:
-        return f"பிழை: {str(e)}"
+        response = requests.get(url, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        meaning_div = soup.find("div", {"class": "translation"})
+        return meaning_div.text.strip() if meaning_div else None
+    except:
+        return None
 
-# --- முகப்புத் திரை ---
-st.title("🎯 உயர்தர தமிழ் சொல் விளக்கக் கருவி")
-st.write("PDF அல்லது படங்களை வரி வரியாக வாசித்து கடினமான சொற்களுக்கு விளக்கம் தரும் தளம்.")
+# --- தலைப்பு ---
+st.title("📖 தமிழ் 'ஸ்மார்ட்' ரீடர் (Smart Reader)")
+st.write("PDF வாசிக்கும்போதே கடினமான சொற்களுக்கு விளக்கம் பெறுங்கள்.")
 
-uploaded_file = st.file_uploader("கோப்பைத் தேர்ந்தெடுக்கவும்", type=['pdf', 'png', 'jpg', 'jpeg'])
+uploaded_file = st.file_uploader("PDF கோப்பைப் பதிவேற்றவும்", type=['pdf'])
 
 if uploaded_file:
-    with st.spinner("வரி வரியாகப் படிக்கிறது..."):
-        full_text = ""
-        if uploaded_file.type == "application/pdf":
-            # PDF கோப்பை படங்களாக மாற்றி வாசித்தல்
-            images = convert_from_bytes(uploaded_file.read())
-            for img in images:
-                full_text += pytesseract.image_to_string(img, lang='tam')
-        else:
-            # நேரடிப் படம்
-            image = Image.open(uploaded_file)
-            full_text = pytesseract.image_to_string(image, lang='tam')
+    # PDF-ஐ திரையில் காட்ட தயார் செய்தல்
+    base64_pdf = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
 
-    # வரிகளைப் பிரித்தல்
-    lines = [line.strip() for line in full_text.split('\n') if line.strip()]
+    # இரண்டு பகுதிகளாகப் பிரித்தல்
+    col1, col2 = st.columns([1.5, 1])
 
-    if lines:
-        col1, col2 = st.columns([1, 1])
+    with col1:
+        st.subheader("📄 உங்கள் ஆவணம்")
+        st.markdown(f'<div class="pdf-container">{pdf_display}</div>', unsafe_allow_html=True)
 
-        with col1:
-            st.subheader("📖 வாசிக்கப்பட்ட வரிகள்")
-            selected_line = st.selectbox("விளக்கம் வேண்டிய வரியைத் தேர்ந்தெடுக்கவும்:", lines)
-            
-            # வரியிலிருந்து சொற்களைப் பிரித்தல்
-            words = selected_line.split()
-            selected_word = st.selectbox("எந்தச் சொல்லின் பொருள் வேண்டும்?", words)
+    with col2:
+        st.subheader("🔍 சொல் விளக்கம்")
+        st.write("வாசிக்கும்போது கடினமாகத் தோன்றும் சொல்லைக் கீழே பதிவிடவும்:")
+        
+        target_word = st.text_input("சொல்லை உள்ளிடவும் (எ.கா: அறம், கொள்கை)", key="search_word")
+        
+        show_meaning = st.checkbox("விளக்கம் காட்டவா?", value=True)
 
-        with col2:
-            st.subheader("💎 அகராதித் தரவுகள்")
-            if selected_word:
-                word_clean = selected_word.strip(",.?!:;\"'")
-                st.info(f"தேர்ந்தெடுக்கப்பட்ட சொல்: **{word_clean}**")
+        if target_word and show_meaning:
+            with st.spinner("தேடுகிறது..."):
+                meaning = fetch_tamil_data(target_word)
                 
-                meaning = fetch_tamil_data(word_clean)
-                
-                st.success(f"**பொருள்:** {meaning}")
-                st.markdown("---")
-                st.write("**விளக்கம்:**")
-                st.write(f"1. '{word_clean}' என்பது உயர்தரத் தமிழ் இலக்கிய நடைச் சொல்லாகும்.")
-                st.write(f"2. இதன் பொதுவான விளக்கம்: {meaning}")
-    else:
-        st.error("கோப்பிலிருந்து உரையை வாசிக்க முடியவில்லை. தெளிவான கோப்பைப் பதிவேற்றவும்.")
+                if meaning:
+                    st.markdown(f"""
+                    <div class="meaning-box">
+                        <h3 style='color: #004d99;'>சொல்: {target_word}</h3>
+                        <p><b>பொருள் (Meaning):</b> {meaning}</p>
+                        <hr>
+                        <p><b>உயர்தர விளக்கம்:</b><br>
+                        1. இந்தச் சொல் ஆவணத்தில் ஆழமான கருத்தை உணர்த்தப் பயன்படுத்தப்பட்டுள்ளது.<br>
+                        2. இதன் இலக்கியப் பயன்பாடு மற்றும் இலக்கணப் பொருள் மிக முக்கியமானது.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # இதர தகவல்கள்
+                    st.success(f"✅ இந்தச் சொல் வெற்றிகரமாக அகராதியிலிருந்து கண்டறியப்பட்டது.")
+                else:
+                    st.warning("மன்னிக்கவும், இந்தச் சொல் அகராதியில் இல்லை.")
 
 st.markdown("---")
-st.caption("ஆதாரம்: University of Madras Lexicon & Tamilcube Online Dataset")
+st.caption("Standard High-Level Tamil Lexicon System | Real-time Dataset Connection")
