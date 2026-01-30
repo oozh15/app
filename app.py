@@ -1,91 +1,56 @@
 import streamlit as st
-import pytesseract
-from PIL import Image
-from pdf2image import convert_from_bytes
 import requests
 from bs4 import BeautifulSoup
-import re
-import base64
 
-# --- Improved Normalization Logic ---
-def get_root_word(word):
-    """Strips common Tamil suffixes to find the base word for dictionary lookup."""
-    # Clean non-Tamil characters and punctuation
-    word = re.sub(r'[^\u0b80-\u0bff]', '', word)
-    
-    # List of common Tamil suffixes (declensions)
-    # Ordered by length to strip the longest matches first
-    suffixes = ['உக்காக', 'க்காக', 'ிருந்தது', 'உடைய', 'ோடு', 'இடம்', 'ுக்கு', 'உக்கு', 'ை', 'ால்', 'கு', 'ின்', 'இல்']
-    
-    found_root = word
-    for s in suffixes:
-        if word.endswith(s):
-            # Ensure the root isn't too short after stripping
-            potential_root = word[:-len(s)]
-            if len(potential_root) >= 2:
-                found_root = potential_root
-                break
-    return found_root
+st.set_page_config(
+    page_title="Tamil Dictionary Reader",
+    page_icon="📘",
+    layout="centered"
+)
 
-# --- Online Fetch Function ---
-def fetch_meaning(word):
+st.title("📘 Tamil Professional Reader (Non-AI)")
+st.write("Select a Tamil word and get its verified meaning from online academic sources.")
+
+# Input box
+word = st.text_input("🔍 Enter a Tamil word", placeholder="உதாரணம்: மதியால்")
+
+def fetch_tamilcube_meaning(word):
     url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        meaning = soup.find("div", {"class": "translation"})
-        return meaning.text.strip() if meaning else None
-    except:
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(url, headers=headers, timeout=10)
+
+    if response.status_code != 200:
         return None
 
-# --- UI Setup ---
-st.set_page_config(page_title="Tamil Lexicon Pro", layout="wide")
+    soup = BeautifulSoup(response.text, "html.parser")
 
-st.title("🏛️ Tamil Document Decoder")
+    result_div = soup.find("div", {"class": "meaning"})
 
-uploaded_file = st.file_uploader("Upload PDF", type=['pdf'])
+    if result_div:
+        return result_div.get_text(strip=True)
 
-if uploaded_file:
-    pdf_bytes = uploaded_file.read()
-    
-    # Display PDF
-    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800"></iframe>'
+    return None
 
-    col1, col2 = st.columns([1.1, 0.9])
-    with col1:
-        st.subheader("📄 PDF Viewer")
-        st.markdown(pdf_display, unsafe_allow_html=True)
 
-    with col2:
-        st.subheader("🔍 Smart Lexicon")
-        
-        # OCR extraction
-        images = convert_from_bytes(pdf_bytes)
-        text_lines = []
-        for img in images:
-            page_text = pytesseract.image_to_string(img, lang='tam')
-            text_lines.extend([l.strip() for l in page_text.split('\n') if len(l.strip()) > 3])
+if st.button("📖 Get Meaning"):
+    if not word.strip():
+        st.warning("Please enter a Tamil word.")
+    else:
+        with st.spinner("Fetching meaning from online dictionary..."):
+            meaning = fetch_tamilcube_meaning(word)
 
-        if text_lines:
-            selected_line = st.selectbox("Select a line:", text_lines)
-            words = selected_line.split()
-            target = st.radio("Choose word:", words, horizontal=True)
+        if meaning:
+            st.success("Meaning found ✅")
 
-            if target:
-                # 1. Try exact match
-                clean_target = re.sub(r'[^\u0b80-\u0bff]', '', target)
-                res = fetch_meaning(clean_target)
-                
-                # 2. If no match, try root word stripping
-                if not res:
-                    root = get_root_word(clean_target)
-                    if root != clean_target:
-                        st.info(f"Exact match not found. Searching for root word: '{root}'")
-                        res = fetch_meaning(root)
+            st.markdown("### 📌 Meaning")
+            st.write(meaning)
 
-                if res:
-                    st.success(f"**Meaning:** {res}")
-                else:
-                    st.error("Meaning not found in online dataset.")
+            st.markdown("---")
+            st.markdown(
+                "🔗 **Source:** [Tamilcube Dictionary](https://dictionary.tamilcube.com/)"
+            )
+        else:
+            st.error("Meaning not found or source temporarily unavailable.")
