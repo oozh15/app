@@ -1,5 +1,4 @@
 import streamlit as st
-import pdfplumber
 import pytesseract
 from PIL import Image
 import cv2
@@ -10,7 +9,7 @@ import re
 from pdf2image import convert_from_bytes
 
 # -----------------------------
-# LOAD DICTIONARY (AUTO FIX)
+# LOAD DICTIONARY (AUTO-FIX)
 # -----------------------------
 @st.cache_data
 def load_dictionary():
@@ -44,22 +43,22 @@ dictionary = load_dictionary()
 # -----------------------------
 st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
 st.title("📘 Tamil Professional Reader (Non-AI)")
-st.caption("Upload PDF / Image → Copy Word → Get Meaning (From GitHub Dataset)")
+st.caption("Upload PDF / Image → Extract Tamil Text → Lookup Word Meaning")
 
 # -----------------------------
 # OCR PREPROCESSING
 # -----------------------------
 def preprocess_image(img):
     """
-    Preprocess image for Tamil OCR:
+    Preprocess PIL image for better Tamil OCR:
     - Convert to grayscale
-    - Resize for better OCR
-    - Denoise using bilateral filter
-    - Adaptive thresholding
+    - Resize for better recognition
+    - Denoise
+    - Adaptive threshold
     """
     img = np.array(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+    gray = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_LINEAR)
     gray = cv2.bilateralFilter(gray, 9, 75, 75)
     thresh = cv2.adaptiveThreshold(
         gray, 255,
@@ -74,24 +73,23 @@ def extract_tamil_from_image(image):
     """
     processed = preprocess_image(image)
     text = pytesseract.image_to_string(processed, lang='tam', config='--psm 6')
-    # Clean unwanted characters
-    text = re.sub(r'[^அ-ஹா-௿0-9a-zA-Z\s.,/-]', '', text)
+    # Remove non-Tamil and unwanted characters
+    text = re.sub(r'[^அ-ஹா-௿\s.,/-]', '', text)
     return text
 
 # -----------------------------
-# PDF TEXT EXTRACTION
+# PDF → IMAGE → OCR
 # -----------------------------
 def extract_text_from_pdf(file):
     """
-    Convert scanned PDF to images, then OCR each page
+    Convert scanned PDF pages to images and OCR each page
     """
     text = ""
     try:
-        # Convert PDF pages to images
         pages = convert_from_bytes(file.read())
-        for page in pages:
+        for page_num, page in enumerate(pages, start=1):
             page_text = extract_tamil_from_image(page)
-            text += page_text + "\n"
+            text += f"\n--- Page {page_num} ---\n" + page_text
     except Exception as e:
         st.error(f"Failed to extract text from PDF: {e}")
     return text
