@@ -1,91 +1,50 @@
 import streamlit as st
-import pdfplumber
-from PIL import Image, ImageOps
-import pytesseract
-import cv2
-import numpy as np
-import re
+import requests
+import json
 
-# --- Page Config ---
-st.set_page_config(page_title="Tamil OCR Pro", layout="wide")
+# --- Dictionary Function ---
+@st.cache_data
+def load_dictionary(url):
+    try:
+        response = requests.get(url)
+        return response.json()
+    except:
+        return {}
 
-# --- System Check (Helpful for Debugging) ---
-st.sidebar.title("⚙️ System Status")
-try:
-    ver = pytesseract.get_tesseract_version()
-    langs = pytesseract.get_languages()
-    st.sidebar.success(f"Tesseract {ver} Active")
-    if 'tam' in langs:
-        st.sidebar.success("✅ Tamil Language Loaded")
-    else:
-        st.sidebar.error("❌ Tamil Data Missing")
-        st.sidebar.info("Add tesseract-ocr-tam to packages.txt")
-except Exception as e:
-    st.sidebar.error("Tesseract not found on system")
+def lookup_word(word, dictionary_data):
+    # This assumes your JSON is a list of dicts like: [{"word": "...", "meaning": "..."}]
+    # Adjust the keys ('word', 'meaning') based on your actual JSON structure
+    for entry in dictionary_data:
+        if entry.get('word') == word:
+            return entry.get('meaning')
+    return None
 
-# --- OCR Engine ---
-def preprocess_for_tamil(img):
-    """Enhances image for better Tamil character recognition."""
-    img_array = np.array(img)
-    # Convert to grayscale
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    
-    # Scale up (Tamil curves need more pixels)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    
-    # Denoise
-    denoised = cv2.fastNlMeansDenoising(gray, h=10)
-    
-    # Binarization (Otsu's method is excellent for scanned documents)
-    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    return thresh
+# --- Load the Data ---
+DICT_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
+dictionary = load_dictionary(DICT_URL)
 
-def extract_tamil_text(image):
-    processed = preprocess_for_tamil(image)
-    
-    # --oem 3: LSTM engine (Neural Network)
-    # --psm 4: Assume variable sizes and column detection (Best for Govt Orders)
-    custom_config = r'--oem 3 --psm 4 -l tam'
-    
-    raw_text = pytesseract.image_to_string(processed, config=custom_config)
-    
-    # Post-OCR Cleanup
-    # 1. Remove weird vertical bars often seen in OCR
-    clean_text = raw_text.replace('|', '').replace('I', '')
-    # 2. Normalize spacing
-    clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)
-    
-    return clean_text.strip()
+# --- UI for Lookup (Add this after the OCR result) ---
+st.divider()
+st.subheader("🔍 Tough Word Lookup")
+st.info("Copy a tough word from the text above and paste it here to see the meaning.")
 
-# --- App UI ---
-st.title("📘 Tamil OCR PDF Reader")
-st.markdown("Extracts text from Tamil Government Orders and Documents with high precision.")
+col1, col2 = st.columns([1, 2])
 
-uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
+with col1:
+    search_query = st.text_input("Enter Tamil Word:")
 
-if uploaded_file:
-    extracted_full = ""
-    
-    with st.spinner("Processing Tamil Text..."):
-        if uploaded_file.type == "application/pdf":
-            with pdfplumber.open(uploaded_file) as pdf:
-                total_pages = len(pdf.pages)
-                for i, page in enumerate(pdf.pages):
-                    # Higher resolution (500) for cleaner extraction
-                    img = page.to_image(resolution=500).original
-                    page_text = extract_tamil_text(img)
-                    extracted_full += f"--- Page {i+1} ---\n{page_text}\n\n"
+with col2:
+    if search_query:
+        meaning = lookup_word(search_query, dictionary)
+        if meaning:
+            st.success(f"**Meaning:** {meaning}")
         else:
-            img = Image.open(uploaded_file)
-            extracted_full = extract_tamil_text(img)
+            st.warning("Word not found in the custom dictionary.")
 
-    st.subheader("📄 Extracted Content")
-    st.text_area("Final Output", extracted_full, height=500)
-    
-    st.download_button(
-        label="Download as Text File",
-        data=extracted_full,
-        file_name="extracted_tamil_text.txt",
-        mime="text/plain"
-    )
+# Optional: Show all available words in a dropdown for easy selection
+if dictionary:
+    with st.expander("📚 View all words in Dictionary"):
+        all_words = [item.get('word') for item in dictionary if item.get('word')]
+        selected = st.selectbox("Select a word to see meaning:", [""] + all_words)
+        if selected:
+            st.write(f"**{selected}:** {lookup_word(selected, dictionary)}")
