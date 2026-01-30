@@ -9,137 +9,125 @@ import unicodedata
 import re
 import io
 
-# -------------------------------
-# Page config
-# -------------------------------
-st.set_page_config(
-    page_title="Tamil Professional Reader",
-    page_icon="📘",
-    layout="centered"
-)
+st.set_page_config(page_title="Tamil Reader", page_icon="📘")
 
-st.title("📘 Tamil PDF / Image Professional Reader")
-st.write(
-    "Upload a PDF or Image → copy a Tamil word → get verified meaning (Non-AI)"
-)
+st.title("📘 Tamil PDF / Image Reader (Improved)")
+st.write("Copy Tamil word → normalize → fetch meaning from online dataset")
 
-# -------------------------------
-# Tamil Unicode Normalization
-# -------------------------------
-def normalize_tamil_word(word):
-    # Normalize Unicode form
-    word = unicodedata.normalize("NFC", word)
+# -------------------------
+# STRONG Tamil Normalizer
+# -------------------------
+def normalize_tamil_word(text):
+    text = unicodedata.normalize("NFC", text)
+    text = re.sub(r"[\u200b\u200c\u200d]", "", text)
+    text = re.sub(r"[^அ-ஹா-௺]", "", text)  # keep only Tamil chars
+    return text.strip()
 
-    # Remove zero-width characters
-    word = re.sub(r"[\u200b\u200c\u200d]", "", word)
-
-    # Remove unwanted spaces
-    word = re.sub(r"\s+", "", word)
-
-    return word.strip()
-
-# -------------------------------
-# Fetch Meaning (Tamilcube)
-# -------------------------------
-def fetch_meaning(word):
+# -------------------------
+# STRONG Dictionary Fetch
+# -------------------------
+def fetch_dictionary(word):
     url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-    except:
-        return "Dictionary server not reachable."
+    r = requests.get(url, headers=headers, timeout=10)
+    if r.status_code != 200:
+        return None, None
 
-    if response.status_code != 200:
-        return "Meaning not found."
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    div = soup.find("div", class_="meaning")
+    meaning = None
+    antonyms = []
 
-    if div:
-        return div.get_text(strip=True)
-    else:
-        return "Meaning not found."
+    # --- Meaning fallback search ---
+    possible_blocks = soup.find_all(["div", "span", "p"])
+    for block in possible_blocks:
+        text = block.get_text(strip=True)
+        if len(text) > 20 and word in text:
+            meaning = text
+            break
 
-# -------------------------------
-# Upload PDF / Image
-# -------------------------------
-uploaded_file = st.file_uploader(
-    "📂 Upload Tamil PDF or Image",
-    type=["pdf", "png", "jpg", "jpeg"]
-)
+    # --- Antonyms ---
+    for tag in soup.find_all("b"):
+        if "Antonym" in tag.text:
+            ul = tag.find_next("ul")
+            if ul:
+                antonyms = [li.text.strip() for li in ul.find_all("li")]
 
+    return meaning, antonyms
+
+# -------------------------
+# File Upload
+# -------------------------
+file = st.file_uploader("Upload Tamil PDF or Image", ["pdf", "png", "jpg", "jpeg"])
 extracted_text = ""
 
-if uploaded_file:
-    if uploaded_file.type == "application/pdf":
-        with pdfplumber.open(uploaded_file) as pdf:
+if file:
+    if file.type == "application/pdf":
+        with pdfplumber.open(file) as pdf:
             for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    extracted_text += text + "\n"
-
+                extracted_text += (page.extract_text() or "") + "\n"
     else:
-        image = Image.open(uploaded_file)
-        extracted_text = pytesseract.image_to_string(image, lang="tam")
+        img = Image.open(file)
+        extracted_text = pytesseract.image_to_string(img, lang="tam")
 
-# -------------------------------
-# Show extracted text
-# -------------------------------
+# -------------------------
+# Display extracted text
+# -------------------------
 if extracted_text:
-    st.subheader("📄 Extracted Text (Copy word manually)")
-    st.text_area(
-        "Select & copy a Tamil word from below",
-        extracted_text,
-        height=220
-    )
+    st.subheader("📄 Extracted Text (manual copy)")
+    st.text_area("Copy Tamil word from below", extracted_text, height=220)
 
-# -------------------------------
-# User copy & paste word
-# -------------------------------
+# -------------------------
+# User copy-paste
+# -------------------------
 st.subheader("✂️ Paste Copied Tamil Word")
-
-copied_word = st.text_input(
-    "Paste word here",
-    placeholder="உதாரணம்: மதியால்"
-)
+raw_word = st.text_input("Paste here")
 
 if st.button("📖 Get Meaning"):
-    if not copied_word.strip():
-        st.warning("Please paste a Tamil word.")
+    if not raw_word:
+        st.warning("Paste a Tamil word")
     else:
-        clean_word = normalize_tamil_word(copied_word)
+        clean_word = normalize_tamil_word(raw_word)
 
-        meaning = fetch_meaning(clean_word)
-
-        st.success("Meaning fetched successfully")
-
-        st.markdown("### 🔤 Normalized Word")
+        st.markdown("### 🔧 Normalized Word")
         st.code(clean_word)
 
-        st.markdown("### 📘 Meaning")
-        st.write(meaning)
+        meaning, antonyms = fetch_dictionary(clean_word)
 
-        st.markdown(
-            "🔗 **Source:** [Tamilcube Dictionary](https://dictionary.tamilcube.com/)"
-        )
+        if not meaning:
+            st.error("Meaning not found. Try copying word again carefully.")
+        else:
+            st.success("Meaning fetched")
 
-        # -------------------------------
-        # DOCX Export
-        # -------------------------------
-        doc = Document()
-        doc.add_heading("Tamil Word Meaning", level=1)
-        doc.add_paragraph(f"Word: {clean_word}")
-        doc.add_paragraph(f"Meaning: {meaning}")
-        doc.add_paragraph("Source: Tamilcube Dictionary")
+            st.markdown("### 📘 Meaning")
+            st.write(meaning)
 
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
+            st.markdown("### 🔁 Antonyms")
+            if antonyms:
+                for a in antonyms:
+                    st.write("•", a)
+            else:
+                st.write("No antonyms available")
 
-        st.download_button(
-            "⬇️ Download DOCX",
-            buffer,
-            file_name="tamil_word_meaning.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+            # DOCX Export
+            doc = Document()
+            doc.add_heading("Tamil Dictionary Result", 1)
+            doc.add_paragraph(f"Word: {clean_word}")
+            doc.add_paragraph(f"Meaning: {meaning}")
+
+            if antonyms:
+                doc.add_paragraph("Antonyms:")
+                for a in antonyms:
+                    doc.add_paragraph(f"- {a}")
+
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+
+            st.download_button(
+                "⬇️ Download DOCX",
+                buffer,
+                "tamil_dictionary.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
