@@ -3,3 +3,4 @@ pytesseract
 Pillow
 pdf2image
 requests
+beautifulsoup4
