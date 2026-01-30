@@ -12,7 +12,7 @@ st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
 # -----------------------------------
 # LOAD DATASET FROM GITHUB (ONLY THIS)
 # -----------------------------------
-DATASET_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
+DATASET_URL = "https://raw.githubusercontent.com/oozh15/app/refs/heads/main/tamil.json"
 
 @st.cache_data
 def load_dictionary():
