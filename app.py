@@ -6,13 +6,16 @@ import cv2
 import numpy as np
 import re
 import requests
-import json
-from deep_translator import GoogleTranslator
+from nltk.corpus import wordnet
+import nltk
+
+# --- Download WordNet (only once) ---
+nltk.download('wordnet')
 
 # --- Page Config ---
-st.set_page_config(page_title="Tamil OCR Pro", layout="wide")
+st.set_page_config(page_title="Tamil OCR Pro with Meaning", layout="wide")
 
-# --- System Status ---
+# --- System Check ---
 st.sidebar.title("⚙️ System Status")
 try:
     ver = pytesseract.get_tesseract_version()
@@ -22,23 +25,11 @@ try:
         st.sidebar.success("✅ Tamil Language Loaded")
     else:
         st.sidebar.error("❌ Tamil Data Missing")
+        st.sidebar.info("Add tesseract-ocr-tam to packages.txt")
 except Exception as e:
-    st.sidebar.error("Tesseract not found")
+    st.sidebar.error("Tesseract not found on system")
 
-# --- Load Dictionary from GitHub ---
-@st.cache_data
-def load_dictionary():
-    url = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        return data  # { "word": "meaning", ... }
-    except:
-        return {}
-
-tamil_dict = load_dictionary()
-
-# --- OCR Preprocessing ---
+# --- OCR Engine ---
 def preprocess_for_tamil(img):
     img_array = np.array(img)
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
@@ -55,24 +46,45 @@ def extract_tamil_text(image):
     clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)
     return clean_text.strip()
 
-# --- Meaning Lookup ---
-@st.cache_data
-def get_meaning(word):
-    word = word.strip()
-    # 1️⃣ First check local dictionary
-    if word in tamil_dict:
-        return tamil_dict[word]
-    
-    # 2️⃣ If not found, try online translator
+# --- Translation & Meaning ---
+def tamil_to_english(word):
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=ta&tl=en&dt=t&q={word}"
     try:
-        meaning = GoogleTranslator(source='ta', target='en').translate(word)
-        return meaning
+        res = requests.get(url).json()
+        return res[0][0][0]
     except:
-        return "❌ Meaning not found"
+        return None
+
+def english_to_tamil(text):
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ta&dt=t&q={text}"
+    try:
+        res = requests.get(url).json()
+        return res[0][0][0]
+    except:
+        return None
+
+def get_synonyms_antonyms(word_en):
+    synonyms, antonyms = set(), set()
+    for syn in wordnet.synsets(word_en):
+        for lemma in syn.lemmas():
+            synonyms.add(lemma.name())
+            if lemma.antonyms():
+                for ant in lemma.antonyms():
+                    antonyms.add(ant.name())
+    return list(synonyms), list(antonyms)
+
+def get_meaning_antonyms_tamil(word_ta):
+    word_en = tamil_to_english(word_ta)
+    if not word_en:
+        return "❌ Meaning not found", []
+    synonyms, antonyms = get_synonyms_antonyms(word_en)
+    meaning_ta = english_to_tamil(word_en)
+    antonyms_ta = [english_to_tamil(a) for a in antonyms[:5]]  # limit 5
+    return meaning_ta, antonyms_ta
 
 # --- App UI ---
-st.title("📘 Tamil OCR Pro")
-st.markdown("Extract text from PDFs/Images & get meanings of Tamil words instantly.")
+st.title("📘 Tamil OCR with Meaning & Antonyms")
+st.markdown("Upload Tamil PDF/Image → Extract text → Click any unknown word → Get Tamil meaning + antonyms.")
 
 uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
@@ -81,26 +93,28 @@ if uploaded_file:
     with st.spinner("Processing Tamil Text..."):
         if uploaded_file.type == "application/pdf":
             with pdfplumber.open(uploaded_file) as pdf:
+                total_pages = len(pdf.pages)
                 for i, page in enumerate(pdf.pages):
                     img = page.to_image(resolution=500).original
                     page_text = extract_tamil_text(img)
-                    extracted_full += f"--- Page {i+1} ---\n{page_text}\n\n"
+                    extracted_full += f"--- பக்கம் {i+1} ---\n{page_text}\n\n"
         else:
             img = Image.open(uploaded_file)
             extracted_full = extract_tamil_text(img)
 
-    # Display extracted text
     st.subheader("📄 Extracted Content")
-    text_area = st.text_area("Final Output", extracted_full, height=400)
+    st.text_area("Final Output", extracted_full, height=400)
 
-    # Word lookup
-    st.subheader("🔍 Type Word to Get Meaning")
-    typed_word = st.text_input("Enter Tamil word")
-    if typed_word:
-        meaning = get_meaning(typed_word)
-        st.markdown(f"**Meaning of '{typed_word}':** {meaning}")
+    # --- Select Word for Meaning ---
+    st.subheader("🔍 Get Meaning & Antonyms")
+    word_input = st.text_input("Enter a Tamil word (அறியாத சொல்)")
+    if word_input:
+        meaning, antonyms = get_meaning_antonyms_tamil(word_input)
+        st.write(f"**சொல்:** {word_input}")
+        st.write(f"**அர்த்தம் (தமிழ்):** {meaning}")
+        st.write(f"**எதிர்மறைகள் (தமிழ்):** {', '.join(antonyms) if antonyms else '❌ கிடைக்கவில்லை'}")
 
-    # Download full text
+    # --- Download Extracted Text ---
     st.download_button(
         label="Download as Text File",
         data=extracted_full,
