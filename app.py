@@ -1,92 +1,76 @@
 import streamlit as st
 import pdfplumber
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 import cv2
 import numpy as np
 import re
 
-# ---------------------------
-# Improved Image Preprocessing
-# ---------------------------
-def preprocess_image(img):
-    img = np.array(img)
-    # Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+def refine_image_for_tamil(img):
+    # Convert PIL to OpenCV format
+    img_array = np.array(img)
+    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
     
-    # Scale up if the image is small (crucial for OCR accuracy)
+    # 1. Increase contrast significantly
+    # This helps Tesseract distinguish between 'r' (ர) and 'p' (ப) in low quality scans
+    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+    
+    # 2. Resizing with INTER_CUBIC (Crucial for Tamil fonts like 'Latha' or 'Bamini')
     height, width = gray.shape
     gray = cv2.resize(gray, (width * 2, height * 2), interpolation=cv2.INTER_CUBIC)
-
-    # Apply Dilation and Erosion to thicken thin characters
-    kernel = np.ones((1, 1), np.uint8)
-    gray = cv2.dilate(gray, kernel, iterations=1)
-    gray = cv2.erode(gray, kernel, iterations=1)
-
-    # Advanced Thresholding: Otsu's Binarization works better for scanned docs
-    # than simple adaptive thresholding in many cases.
-    processed = cv2.threshold(cv2.medianBlur(gray, 3), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
     
-    return processed
+    # 3. Bilateral filtering (Removes noise but keeps edge sharpness)
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
+    
+    # 4. Thresholding: Using a mix of Gaussian and Otsu
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                   cv2.THRESH_BINARY, 31, 10)
+    
+    return thresh
 
-# ---------------------------
-# OCR Tamil text from image
-# ---------------------------
-def ocr_image(image):
-    processed = preprocess_image(image)
+def ocr_tamil_engine(image):
+    processed_img = refine_image_for_tamil(image)
     
-    # Tesseract Configuration:
-    # --oem 3: Use LSTM OCR Engine (Best for Indic scripts)
-    # --psm 3: Fully automatic page segmentation (better for varied layouts)
-    custom_config = r'--oem 3 --psm 3 -l tam'
+    # CONFIGURATION EXPLANATION:
+    # --oem 3: LSTM Neural Net (Best for Tamil)
+    # --psm 4: Assume a single column of text of variable sizes (Best for G.O. formats)
+    # -c preserve_interword_spaces=1: Maintains the tabular/indented look of Govt orders
+    custom_config = r'--oem 3 --psm 4 -l tam --allow_blob_division T'
     
-    text = pytesseract.image_to_string(processed, config=custom_config)
+    text = pytesseract.image_to_string(processed_img, config=custom_config)
     
-    # Improved Cleaning: 
-    # Don't strip punctuation if you want natural text. 
-    # Only remove excess weird symbols and fix spacing.
-    text = re.sub(r'[^\u0B80-\u0BFF\s.,?!0-9]', '', text) 
-    text = re.sub(r'\n\s*\n', '\n\n', text)  # Keep paragraph breaks
-    return text.strip()
+    # Post-Processing: Fix common OCR artifacts in Tamil
+    text = text.replace('|', '')  # Removes vertical line artifacts
+    text = re.sub(r'([0-9])\s+([0-9])', r'\1\2', text)  # Fixes broken numbers
+    
+    return text
 
-# ---------------------------
-# PDF → OCR text extraction
-# ---------------------------
-def extract_text_from_pdf(file):
-    text_content = []
+def process_pdf(file):
+    extracted_pages = []
     with pdfplumber.open(file) as pdf:
-        progress_bar = st.progress(0)
-        total_pages = len(pdf.pages)
-        
+        total = len(pdf.pages)
+        status = st.empty()
         for i, page in enumerate(pdf.pages):
-            # Increase resolution to 500 for better Tamil character recognition
-            pil_image = page.to_image(resolution=500).original
-            page_text = ocr_image(pil_image)
-            text_content.append(f"--- Page {i+1} ---\n{page_text}")
-            progress_bar.progress((i + 1) / total_pages)
-            
-    return "\n\n".join(text_content)
+            status.info(f"Processing Page {i+1} of {total}...")
+            # Resolution 600 is the sweet spot for official documents
+            img = page.to_image(resolution=600).original
+            page_text = ocr_tamil_engine(img)
+            extracted_pages.append(f"--- Page {i+1} ---\n{page_text}")
+    return "\n\n".join(extracted_pages)
 
-# ---------------------------
-# Streamlit UI
-# ---------------------------
-st.set_page_config(page_title="Pro Tamil OCR", layout="wide")
-st.title("📘 Pro Tamil OCR Reader")
-
-uploaded_file = st.file_uploader("Upload Tamil PDF or Image", type=["pdf","png","jpg","jpeg"])
+# --- Streamlit UI ---
+st.title("🏛 Official Tamil Document OCR")
+uploaded_file = st.file_uploader("Upload Government Order (PDF/Image)", type=["pdf", "jpg", "png"])
 
 if uploaded_file:
-    with st.spinner("Processing... This may take a moment for large PDFs."):
-        if uploaded_file.type == "application/pdf":
-            extracted_text = extract_text_from_pdf(uploaded_file)
-        else:
-            image = Image.open(uploaded_file)
-            # Show a preview of what we're working with
-            st.image(image, caption="Uploaded Image", width=300)
-            extracted_text = ocr_image(image)
+    if uploaded_file.type == "application/pdf":
+        result = process_pdf(uploaded_file)
+    else:
+        img = Image.open(uploaded_file)
+        result = ocr_tamil_engine(img)
     
-    st.subheader("📄 Extracted Tamil Text")
-    st.text_area("Result:", extracted_text, height=500)
+    st.subheader("📝 Extracted Content")
+    # Using height=800 to make it easier to compare with original
+    st.text_area("Tamil Text Output", result, height=800)
     
-    # Added: Download button for convenience
-    st.download_button("Download as Text File", extracted_text, file_name="extracted_tamil.txt")
+    st.download_button("Save as .txt", result, file_name="Tamil_Extracted.txt")
