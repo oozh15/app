@@ -1,56 +1,80 @@
 import streamlit as st
+import pdfplumber
+import pytesseract
+from PIL import Image
 import requests
 from bs4 import BeautifulSoup
+from docx import Document
+import io
 
-st.set_page_config(
-    page_title="Tamil Dictionary Reader",
-    page_icon="📘",
-    layout="centered"
-)
+st.set_page_config(page_title="Tamil PDF/Image Reader", page_icon="📄")
 
-st.title("📘 Tamil Professional Reader (Non-AI)")
-st.write("Select a Tamil word and get its verified meaning from online academic sources.")
+st.title("📄 Tamil PDF / Image Reader (Non-AI)")
+st.write("Upload a PDF or Image → select Tamil words → get meaning → export DOCX")
 
-# Input box
-word = st.text_input("🔍 Enter a Tamil word", placeholder="உதாரணம்: மதியால்")
-
-def fetch_tamilcube_meaning(word):
+# -----------------------------
+# Dictionary fetch (Tamilcube)
+# -----------------------------
+def fetch_meaning(word):
     url = f"https://dictionary.tamilcube.com/tamil-dictionary.aspx?term={word}"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+    res = requests.get(url, headers=headers, timeout=10)
 
-    response = requests.get(url, headers=headers, timeout=10)
+    if res.status_code != 200:
+        return "Meaning not found"
 
-    if response.status_code != 200:
-        return None
+    soup = BeautifulSoup(res.text, "html.parser")
+    div = soup.find("div", class_="meaning")
+    return div.text.strip() if div else "Meaning not found"
 
-    soup = BeautifulSoup(response.text, "html.parser")
+# -----------------------------
+# File Upload
+# -----------------------------
+uploaded = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
-    result_div = soup.find("div", {"class": "meaning"})
+extracted_text = ""
 
-    if result_div:
-        return result_div.get_text(strip=True)
+if uploaded:
+    if uploaded.type == "application/pdf":
+        with pdfplumber.open(uploaded) as pdf:
+            for page in pdf.pages:
+                extracted_text += page.extract_text() + "\n"
 
-    return None
-
-
-if st.button("📖 Get Meaning"):
-    if not word.strip():
-        st.warning("Please enter a Tamil word.")
     else:
-        with st.spinner("Fetching meaning from online dictionary..."):
-            meaning = fetch_tamilcube_meaning(word)
+        image = Image.open(uploaded)
+        extracted_text = pytesseract.image_to_string(image, lang="tam")
 
-        if meaning:
-            st.success("Meaning found ✅")
+# -----------------------------
+# Show extracted text
+# -----------------------------
+if extracted_text:
+    st.subheader("📃 Extracted Tamil Text")
+    st.text_area("Text", extracted_text, height=200)
 
-            st.markdown("### 📌 Meaning")
-            st.write(meaning)
+    words = list(set(extracted_text.split()))
+    selected_word = st.selectbox("🔍 Select a word", words)
 
-            st.markdown("---")
-            st.markdown(
-                "🔗 **Source:** [Tamilcube Dictionary](https://dictionary.tamilcube.com/)"
+    if selected_word:
+        meaning = fetch_meaning(selected_word)
+
+        st.subheader("📘 Meaning")
+        st.write(meaning)
+
+        # DOCX Export
+        if st.button("⬇️ Add to DOCX"):
+            doc = Document()
+            doc.add_heading("Tamil Word Meanings", level=1)
+            doc.add_paragraph(f"Word: {selected_word}")
+            doc.add_paragraph(f"Meaning: {meaning}")
+            doc.add_paragraph("Source: Tamilcube Dictionary")
+
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+
+            st.download_button(
+                "Download DOCX",
+                buffer,
+                file_name="tamil_meaning.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-        else:
-            st.error("Meaning not found or source temporarily unavailable.")
