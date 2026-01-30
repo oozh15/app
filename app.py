@@ -1,56 +1,101 @@
 import streamlit as st
 import pdfplumber
+import pytesseract
+import requests
+import json
+from PIL import Image
+import cv2
+import numpy as np
 
-st.set_page_config(page_title="Tamil PDF Reader", layout="wide")
+st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
 
-st.title("📘 Tamil PDF Reader (Direct Search)")
-st.caption("Upload Tamil PDF → Search any word → Fetch meaning directly")
+# -----------------------------------
+# LOAD DATASET FROM GITHUB (ONLY THIS)
+# -----------------------------------
+DATASET_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
-# -------------------------------
-# Upload PDF
-# -------------------------------
+@st.cache_data
+def load_dictionary():
+    response = requests.get(DATASET_URL)
+    response.raise_for_status()
+    return json.loads(response.text)
+
+dictionary = load_dictionary()
+
+# -----------------------------------
+# OCR FOR TAMIL
+# -----------------------------------
+def preprocess_image(img):
+    img = np.array(img)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 31, 2
+    )
+    return thresh
+
+def extract_tamil_from_image(image):
+    processed = preprocess_image(image)
+    return pytesseract.image_to_string(processed, lang="tam", config="--psm 6")
+
+# -----------------------------------
+# PDF TEXT EXTRACTION
+# -----------------------------------
+def extract_text_from_pdf(file):
+    text = ""
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+    return text
+
+# -----------------------------------
+# WORD LOOKUP (FROM DATASET ONLY)
+# -----------------------------------
+def lookup_word(word):
+    for item in dictionary:
+        if item["word"] == word:
+            return item["meaning"], item["synonym"], item["antonym"]
+    return None, None, None
+
+# -----------------------------------
+# UI
+# -----------------------------------
+st.title("📘 Tamil Professional Reader (Non-AI)")
+st.caption("PDF / Image → Copy Word → Meaning (From GitHub Dataset)")
+
 uploaded_file = st.file_uploader(
-    "Upload Tamil PDF",
-    type=["pdf"]
+    "Upload Tamil PDF or Image",
+    type=["pdf", "png", "jpg", "jpeg"]
 )
 
+extracted_text = ""
+
 if uploaded_file:
-    # Open PDF using pdfplumber
-    with pdfplumber.open(uploaded_file) as pdf:
-        # Extract all text from all pages
-        pdf_text_pages = [page.extract_text() or "" for page in pdf.pages]
+    if uploaded_file.type == "application/pdf":
+        extracted_text = extract_text_from_pdf(uploaded_file)
+    else:
+        image = Image.open(uploaded_file)
+        extracted_text = extract_tamil_from_image(image)
 
-    st.subheader("📄 PDF Text Preview")
-    combined_text = "\n\n".join(pdf_text_pages)
-    st.text_area("PDF Content (scrollable)", combined_text, height=300)
+    st.subheader("📄 Extracted Text")
+    st.text_area("Copy a Tamil word:", extracted_text, height=250)
 
-    # -------------------------------
-    # Word search in PDF
-    # -------------------------------
-    st.subheader("🔍 Search Word in PDF")
-    search_word = st.text_input("Enter Tamil word to search:")
+# -----------------------------------
+# LOOKUP
+# -----------------------------------
+st.subheader("🔍 Word Meaning Lookup")
+selected_word = st.text_input("Paste a Tamil word here:")
 
-    if st.button("Search"):
-        if not search_word.strip():
-            st.warning("Please enter a word")
-        else:
-            found = False
-            results = []
+if st.button("Get Meaning"):
+    meaning, synonym, antonym = lookup_word(selected_word.strip())
 
-            for page_num, page_text in enumerate(pdf_text_pages, start=1):
-                if search_word in page_text:
-                    found = True
-                    # Extract surrounding text (for context)
-                    lines = page_text.split("\n")
-                    for line in lines:
-                        if search_word in line:
-                            results.append(f"Page {page_num}: {line.strip()}")
-
-            if found:
-                st.success(f"Word '{search_word}' found in PDF!")
-                for res in results:
-                    # Highlight the word in the line
-                    highlighted = res.replace(search_word, f"**{search_word}**")
-                    st.markdown(highlighted)
-            else:
-                st.warning(f"Word '{search_word}' not found in PDF.")
+    if meaning:
+        st.success("Meaning Found")
+        st.markdown(f"**📌 Word:** {selected_word}")
+        st.markdown(f"**📖 Meaning:** {meaning}")
+        st.markdown(f"**🔁 Synonym:** {synonym}")
+        st.markdown(f"**⛔ Antonym:** {antonym}")
+    else:
+        st.error("Word not found in dataset")
