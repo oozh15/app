@@ -1,14 +1,15 @@
 import streamlit as st
 import pdfplumber
 import pytesseract
-import requests
 from PIL import Image
 import cv2
 import numpy as np
+import requests
 import json
+import re
 
 # -----------------------------
-# LOAD DICTIONARY
+# LOAD DICTIONARY (AUTO FIX)
 # -----------------------------
 @st.cache_data
 def load_dictionary():
@@ -16,23 +17,23 @@ def load_dictionary():
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        data = []
+        text = response.text
 
-        # Parse each line as a separate JSON object (handles malformed JSON)
-        for line in response.text.splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    data.append(json.loads(line))
-                except json.JSONDecodeError:
-                    # Skip invalid lines
-                    continue
+        # Use regex to extract all JSON objects
+        matches = re.findall(r'\{.*?\}', text, re.DOTALL)
+        data = [json.loads(m) for m in matches]
+
         if not data:
             st.warning("Dataset loaded but no valid entries found.")
+        else:
+            st.success(f"Loaded {len(data)} words from dataset ✅")
         return data
 
     except requests.RequestException as e:
         st.error(f"Failed to load dataset from GitHub: {e}")
+        return []
+    except json.JSONDecodeError as e:
+        st.error(f"Failed to parse JSON objects: {e}")
         return []
 
 dictionary = load_dictionary()
