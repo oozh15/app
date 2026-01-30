@@ -7,6 +7,7 @@ import numpy as np
 import requests
 import json
 import re
+from pdf2image import convert_from_bytes
 
 # -----------------------------
 # LOAD DICTIONARY (AUTO FIX)
@@ -19,7 +20,7 @@ def load_dictionary():
         response.raise_for_status()
         text = response.text
 
-        # Use regex to extract all JSON objects
+        # Extract all JSON objects from broken file
         matches = re.findall(r'\{.*?\}', text, re.DOTALL)
         data = [json.loads(m) for m in matches]
 
@@ -46,11 +47,19 @@ st.title("📘 Tamil Professional Reader (Non-AI)")
 st.caption("Upload PDF / Image → Copy Word → Get Meaning (From GitHub Dataset)")
 
 # -----------------------------
-# OCR FOR TAMIL
+# OCR PREPROCESSING
 # -----------------------------
 def preprocess_image(img):
+    """
+    Preprocess image for Tamil OCR:
+    - Convert to grayscale
+    - Resize for better OCR
+    - Denoise using bilateral filter
+    - Adaptive thresholding
+    """
     img = np.array(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
     gray = cv2.bilateralFilter(gray, 9, 75, 75)
     thresh = cv2.adaptiveThreshold(
         gray, 255,
@@ -60,21 +69,35 @@ def preprocess_image(img):
     return thresh
 
 def extract_tamil_from_image(image):
+    """
+    OCR a single PIL image to Tamil text
+    """
     processed = preprocess_image(image)
-    return pytesseract.image_to_string(processed, lang="tam", config="--psm 6")
+    text = pytesseract.image_to_string(processed, lang='tam', config='--psm 6')
+    # Clean unwanted characters
+    text = re.sub(r'[^அ-ஹா-௿0-9a-zA-Z\s.,/-]', '', text)
+    return text
 
 # -----------------------------
 # PDF TEXT EXTRACTION
 # -----------------------------
 def extract_text_from_pdf(file):
+    """
+    Convert scanned PDF to images, then OCR each page
+    """
     text = ""
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text += page.extract_text() or ""
+    try:
+        # Convert PDF pages to images
+        pages = convert_from_bytes(file.read())
+        for page in pages:
+            page_text = extract_tamil_from_image(page)
+            text += page_text + "\n"
+    except Exception as e:
+        st.error(f"Failed to extract text from PDF: {e}")
     return text
 
 # -----------------------------
-# WORD LOOKUP (FROM DICTIONARY)
+# WORD LOOKUP
 # -----------------------------
 def lookup_word(word):
     word = word.strip()
