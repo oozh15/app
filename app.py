@@ -5,6 +5,7 @@ import requests
 from PIL import Image
 import cv2
 import numpy as np
+import json
 
 # -----------------------------
 # LOAD DICTIONARY
@@ -15,12 +16,23 @@ def load_dictionary():
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        return response.json()  # Safe JSON parsing
+        data = []
+
+        # Parse each line as a separate JSON object (handles malformed JSON)
+        for line in response.text.splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    data.append(json.loads(line))
+                except json.JSONDecodeError:
+                    # Skip invalid lines
+                    continue
+        if not data:
+            st.warning("Dataset loaded but no valid entries found.")
+        return data
+
     except requests.RequestException as e:
         st.error(f"Failed to load dataset from GitHub: {e}")
-        return []
-    except ValueError as e:
-        st.error(f"Failed to parse JSON: {e}")
         return []
 
 dictionary = load_dictionary()
