@@ -6,13 +6,20 @@ import json
 from PIL import Image
 import cv2
 import numpy as np
+import requests
+import json
+
+@st.cache_data
+def load_dictionary():
+    url = "https://github.com/oozh15/app/raw/refs/heads/main/tamil.json"
+    response = requests.get(url)
+    response.raise_for_status()  # Will raise HTTPError if request fails
+    return json.loads(response.text)  # Load JSON safely
+
+dictionary = load_dictionary()
 
 st.set_page_config(page_title="Tamil Professional Reader", layout="wide")
 
-# -----------------------------------
-# LOAD DATASET FROM GITHUB (ONLY THIS)
-# -----------------------------------
-DATASET_URL = "https://raw.githubusercontent.com/oozh15/app/refs/heads/main/tamil.json"
 
 @st.cache_data
 def load_dictionary():
