@@ -25,3 +25,12 @@ pdfplumber
 pillow
 pytesseract
 python-docx
+streamlit
+pytesseract
+pillow
+pdfplumber
+requests
+beautifulsoup4
+python-docx
+opencv-python-headless
+
