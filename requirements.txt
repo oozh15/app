@@ -10,5 +10,7 @@ pdfplumber
 opencv-python-headless
 numpy
 Pillow
+deep-translator
+
 requests
 googletrans==4.0.0-rc1
