@@ -1,8 +1,6 @@
 streamlit
 pytesseract
-pillow
 pdfplumber
-requests
-beautifulsoup4
-python-docx
 opencv-python-headless
+numpy
+Pillow
