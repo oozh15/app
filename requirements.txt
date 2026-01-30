@@ -4,3 +4,10 @@ pdfplumber
 opencv-python-headless
 numpy
 Pillow
+streamlit
+pytesseract
+pdfplumber
+opencv-python-headless
+numpy
+Pillow
+requests
