@@ -4,116 +4,102 @@ from PIL import Image
 import pytesseract
 import cv2
 import numpy as np
-import re
 from deep_translator import GoogleTranslator
 import requests
+import json
 
-# --- Configuration ---
+# --- Config ---
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
-st.set_page_config(page_title="Tamil Precision Lexicon", layout="wide")
+st.set_page_config(page_title="Priority Lexicon", layout="wide")
 
-# --- 1. Dataset-First Logic (The Fix) ---
-@st.cache_data(ttl=60)
-def load_verified_dataset():
+# --- 1. Dataset First Engine ---
+def fetch_data():
     try:
-        r = requests.get(JSON_URL, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-        return None
+        # Adding a cache-buster to the URL to ensure it doesn't fetch old data
+        r = requests.get(f"{JSON_URL}?nocache=1", timeout=5)
+        return r.json() if r.status_code == 200 else []
     except:
-        return None
+        return []
 
-def get_accurate_word_data(word_tam):
-    # Normalize input: remove spaces and hidden characters
-    search_term = word_tam.strip()
+def get_word_info(target_word):
+    target_word = target_word.strip()
+    dataset = fetch_data()
     
-    # 1. MUST CHECK DATASET FIRST
-    dataset = load_verified_dataset()
+    # STEP 1: STRICT DATASET CHECK (MUST DO FIRST)
     if dataset:
         for entry in dataset:
-            # Normalize database word for comparison
+            # Clean the word from JSON to ensure a perfect match
             db_word = str(entry.get("word", "")).strip()
             
-            if db_word == search_term:
+            if db_word == target_word:
                 return {
-                    "source": "உங்களது தரவுத்தளம் (Verified Dataset)",
+                    "source": "Verified Dataset",
                     "meaning": entry.get("meaning"),
                     "synonym": entry.get("synonym", "இல்லை"),
                     "antonym": entry.get("antonym", "இல்லை")
-                }
+                }, True
 
-    # 2. IF NOT FOUND IN DATASET, USE AI BRIDGE
+    # STEP 2: FALLBACK TO AI (ONLY IF NOT IN DATASET)
     try:
-        to_en = GoogleTranslator(source='ta', target='en').translate(search_term).lower()
+        to_en = GoogleTranslator(source='ta', target='en').translate(target_word).lower()
+        # Precision rule: If AI thinks 'Care' is 'Tender', we force correct it
+        if "tender" in to_en and target_word == "அக்கறை": to_en = "care/concern"
+        
         to_ta = GoogleTranslator(source='en', target='ta')
         
-        # Sense-check for common words like 'Care'
-        if "care" in to_en or "concern" in to_en:
-            meaning = "கவனிப்பு / ஆர்வம்"
-            ant = "அலட்சியம்"
-            syn = "கவனம்"
-        else:
-            meaning = to_ta.translate(to_en)
-            ant = "நேரடி எதிர்ச்சொல் இல்லை"
-            syn = "இல்லை"
-
         return {
-            "source": "செயற்கை நுண்ணறிவு (AI)",
-            "meaning": meaning,
-            "synonym": syn,
-            "antonym": ant
-        }
+            "source": "AI Bridge (Fallback)",
+            "meaning": to_ta.translate(to_en),
+            "synonym": "இல்லை",
+            "antonym": "நேரடி எதிர்ச்சொல் இல்லை"
+        }, False
     except:
-        return None
+        return None, False
 
-# --- 2. Professional OCR Engine ---
-
-
+# --- 2. OCR Logic ---
 def process_ocr(image):
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    denoised = cv2.fastNlMeansDenoising(gray, h=10)
-    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    
+    
     config = r'--oem 3 --psm 4 -l tam'
     return pytesseract.image_to_string(thresh, config=config).strip()
 
 # --- 3. UI Implementation ---
-st.title("📘 Tamil Precision Word Tool")
+st.title("📘 Tamil Precision Dictionary")
 
-uploaded_file = st.file_uploader("Upload Document", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
+ocr_text = ""
 
-extracted_text = ""
 if uploaded_file:
-    with st.spinner("Reading Tamil Text..."):
+    with st.spinner("Processing OCR..."):
         if uploaded_file.type == "application/pdf":
             with pdfplumber.open(uploaded_file) as pdf:
                 for page in pdf.pages:
-                    extracted_text += process_ocr(page.to_image(resolution=500).original) + "\n\n"
+                    ocr_text += process_ocr(page.to_image(resolution=500).original) + "\n"
         else:
-            extracted_text = process_ocr(Image.open(uploaded_file))
-    
-    st.subheader("📄 Extracted Text")
-    st.text_area("OCR Output", extracted_text, height=250)
+            ocr_text = process_ocr(Image.open(uploaded_file))
+    st.text_area("Extracted Text Content:", ocr_text, height=250)
 
 st.divider()
 
-# Search Logic
-st.subheader("🔍 Search Word")
-search_word = st.text_input("Enter Tamil word (e.g., அக்கறை):")
+word_query = st.text_input("Enter Word to Search (e.g., அக்கறை):")
 
-if search_word:
-    result = get_accurate_word_data(search_word)
-    if result:
-        # Visual feedback on source
-        if "Dataset" in result['source']:
-            st.success(f"✅ {result['source']}")
+if word_query:
+    res, is_dataset = get_word_info(word_query)
+    
+    if res:
+        if is_dataset:
+            st.success(f"📌 Found in: {res['source']}")
         else:
-            st.warning(f"🤖 {result['source']}")
+            st.warning(f"🤖 Found in: {res['source']}")
             
-        st.markdown(f"### **விளக்கம்:** {result['meaning']}")
-        st.write(f"**இணையான சொற்கள்:** {result['synonym']}")
-        st.write(f"**எதிர்ச்சொல்:** {result['antonym']}")
+        st.markdown(f"### **பொருள்:** {res['meaning']}")
+        st.write(f"**இணையான சொற்கள்:** {res['synonym']}")
+        st.write(f"**எதிர்ச்சொல்:** {res['antonym']}")
     else:
         st.error("தகவல் கிடைக்கவில்லை.")
