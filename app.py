@@ -7,16 +7,41 @@ import numpy as np
 import re
 from deep_translator import GoogleTranslator
 import requests
+import json
 
-# --- Page Config ---
-st.set_page_config(page_title="Tamil OCR + Meaning & Antonyms", layout="wide")
-st.title("📘 Tamil OCR & Word Meaning Tool")
-st.markdown("""
-Upload a Tamil PDF/Image document to extract text.  
-Click or enter any unknown Tamil word to get its **meaning** and **antonyms** in Tamil.
-""")
+# --- Configuration ---
+JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
-# --- OCR Functions ---
+st.set_page_config(page_title="Tamil OCR & Multi-Source Dictionary", layout="wide")
+
+# --- 1. Dataset & Wikipedia Logic ---
+@st.cache_data(ttl=300)
+def load_dataset():
+    try:
+        response = requests.get(JSON_URL, timeout=10)
+        return response.json() if response.status_code == 200 else None
+    except:
+        return None
+
+def get_wikipedia_summary(word):
+    """Searches Wikipedia for a more 'Exact' definition."""
+    url = f"https://ta.wikipedia.org/api/rest_v1/page/summary/{word}"
+    try:
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get('extract')
+        return None
+    except:
+        return None
+
+def find_in_dataset(dataset, word):
+    if not dataset: return None
+    for entry in dataset:
+        if entry.get("word") == word or entry.get("tamil") == word:
+            return entry.get("meaning"), entry.get("antonym")
+    return None
+
+# --- 2. Advanced OCR Logic ---
 def preprocess_for_tamil(img):
     img_array = np.array(img)
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
@@ -28,72 +53,92 @@ def preprocess_for_tamil(img):
 def extract_tamil_text(image):
     processed = preprocess_for_tamil(image)
     custom_config = r'--oem 3 --psm 4 -l tam'
-    raw_text = pytesseract.image_to_string(processed, config=custom_config)
-    clean_text = raw_text.replace('|','').replace('I','')
-    clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)
-    return clean_text.strip()
+    text = pytesseract.image_to_string(processed, config=custom_config)
+    return re.sub(r'[|I\[\]\\]', '', text).strip()
 
-# --- Meaning & Antonyms Functions ---
-def fetch_english_antonyms(word_en):
-    url = f"https://api.datamuse.com/words?rel_ant={word_en}"
+# --- 3. Multi-Source Backup Logic ---
+def get_advanced_meaning(word_tam):
+    # Stage 1: Wikipedia Search (For exact/formal meaning)
+    wiki_desc = get_wikipedia_summary(word_tam)
+    
+    # Stage 2: Translation Bridge
     try:
-        resp = requests.get(url, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-        antonyms = [item['word'] for item in data]
-        return antonyms if antonyms else ["❌ Antonyms not found"]
+        translator_en = GoogleTranslator(source='ta', target='en')
+        meaning_en = translator_en.translate(word_tam)
+        
+        translator_ta = GoogleTranslator(source='en', target='ta')
+        meaning_ta = translator_ta.translate(meaning_en)
+        
+        # Antonyms via Datamuse API
+        ant_url = f"https://api.datamuse.com/words?rel_ant={meaning_en}"
+        resp = requests.get(ant_url, timeout=5).json()
+        ant_en = [item['word'] for item in resp][:3]
+        ant_ta = [translator_ta.translate(a) for a in ant_en]
+        
+        # Combine Wikipedia and Translation for "Exactness"
+        final_meaning = f"{wiki_desc}\n\n(Simplified: {meaning_ta})" if wiki_desc else meaning_ta
+        final_antonym = ", ".join(ant_ta) if ant_ta else "❌ Not found"
+        
+        return final_meaning, final_antonym
     except:
-        return ["❌ Antonyms not found"]
+        return "❌ Error fetching meaning", "❌ Error fetching antonym"
 
-def get_tamil_meaning(word_tam):
-    try:
-        meaning_en = GoogleTranslator(source='ta', target='en').translate(word_tam)
-        meaning_ta = GoogleTranslator(source='en', target='ta').translate(meaning_en)
-        return meaning_en, meaning_ta
-    except:
-        return None, "❌ Meaning not found"
+# --- UI Setup ---
+st.title("🏛️ Pro Tamil OCR & Encyclopedia Lookup")
+dataset = load_dataset()
 
-def get_antonyms_tamil(meaning_en):
-    antonyms_en = fetch_english_antonyms(meaning_en)
-    antonyms_ta = []
-    for ant in antonyms_en:
-        if ant == "❌ Antonyms not found":
-            antonyms_ta.append(ant)
+# Sidebar
+with st.sidebar:
+    st.header("Settings")
+    if dataset: st.success(f"Dataset: {len(dataset)} words")
+    if st.button("Clear Search History"): st.session_state.history = []
+
+# Persistent History
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+uploaded_file = st.file_uploader("Upload Tamil PDF/Image", type=["pdf", "png", "jpg", "jpeg"])
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    if uploaded_file:
+        with st.spinner("Extracting text..."):
+            extracted_text = ""
+            if uploaded_file.type == "application/pdf":
+                with pdfplumber.open(uploaded_file) as pdf:
+                    for page in pdf.pages:
+                        img = page.to_image(resolution=500).original
+                        extracted_text += extract_tamil_text(img) + "\n\n"
+            else:
+                img = Image.open(uploaded_file)
+                extracted_text = extract_tamil_text(img)
+            
+            st.subheader("📄 Extracted Document")
+            st.text_area("OCR Output", extracted_text, height=400)
+
+with col2:
+    st.subheader("🔍 Smart Meaning Search")
+    word_query = st.text_input("Enter Tamil word:")
+    
+    if word_query:
+        word_query = word_query.strip()
+        
+        # Logic: Dataset -> Wikipedia -> Translation
+        res = find_in_dataset(dataset, word_query)
+        if res:
+            m, a = res
+            source = "Your Dataset"
         else:
-            try:
-                ant_ta = GoogleTranslator(source='en', target='ta').translate(ant)
-                antonyms_ta.append(ant_ta)
-            except:
-                antonyms_ta.append("❌ Antonyms not found")
-    return antonyms_ta
+            with st.spinner(f"Searching Wikipedia & Web for '{word_query}'..."):
+                m, a = get_advanced_meaning(word_query)
+                source = "Wikipedia/Web Search"
+        
+        # Add to history
+        st.session_state.history.insert(0, {"word": word_query, "meaning": m, "antonym": a, "source": source})
 
-# --- Upload Section ---
-uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
-
-extracted_text = ""
-if uploaded_file:
-    with st.spinner("Processing Tamil Text..."):
-        if uploaded_file.type == "application/pdf":
-            with pdfplumber.open(uploaded_file) as pdf:
-                for i, page in enumerate(pdf.pages):
-                    img = page.to_image(resolution=500).original
-                    extracted_text += extract_tamil_text(img) + "\n\n"
-        else:
-            img = Image.open(uploaded_file)
-            extracted_text = extract_tamil_text(img)
-
-    st.subheader("📄 Extracted Tamil Text")
-    st.text_area("OCR Output", extracted_text, height=400)
-
-# --- Word Meaning & Antonyms Section ---
-st.subheader("🔍 Get Meaning & Antonyms")
-word_tam = st.text_input("Enter Tamil word (அறியாத சொல்)")
-
-if word_tam:
-    with st.spinner("Fetching meaning and antonyms..."):
-        meaning_en, meaning_ta = get_tamil_meaning(word_tam)
-        antonyms_ta = get_antonyms_tamil(meaning_en)
-
-        st.write(f"**சொல்:** {word_tam}")
-        st.write(f"**அர்த்தம் (தமிழ்):** {meaning_ta}")
-        st.write(f"**எதிர்மறை சொல் (தமிழ்):** {', '.join(antonyms_ta)}")
+    # Display History (User can search many times)
+    for entry in st.session_state.history:
+        with st.expander(f"📖 {entry['word']} (from {entry['source']})", expanded=True):
+            st.write(f"**Meaning:** {entry['meaning']}")
+            st.write(f"**Antonyms:** {entry['antonym']}")
