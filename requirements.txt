@@ -11,7 +11,15 @@ opencv-python-headless
 numpy
 Pillow
 deep-translator
-
+nltk
+pytesseract
+pdfplumber
+opencv-python-headless
+deep-translator
+streamlit
+requests
+numpy
+Pillow   
 opencv-python-headless
 numpy
 requests
