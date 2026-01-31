@@ -4,179 +4,96 @@ from PIL import Image
 import pytesseract
 import cv2
 import numpy as np
-import requests
+import re
 from deep_translator import GoogleTranslator
-from difflib import get_close_matches
-import nltk
-from nltk.corpus import wordnet
-import torch
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-import random
-import nltk
-nltk.download('wordnet')
-nltk.download('punkt')   
-# ================= CONFIG =================
-st.set_page_config(page_title="20-Level Tamil Lexical Analyzer", layout="wide")
-JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
+import requests
 
-# ================= DATASET =================
-@st.cache_data(ttl=300)
-def load_dataset():
-    try:
-        r = requests.get(JSON_URL, timeout=5)
-        if r.status_code == 200:
-            return {normalize(entry["word"]): entry for entry in r.json()}
-    except:
-        pass
-    return {}
+# --- Page Config ---
+st.set_page_config(page_title="Tamil OCR + Meaning & Antonyms", layout="wide")
+st.title("📘 Tamil OCR & Word Meaning Tool")
+st.markdown("""
+Upload a Tamil PDF/Image document to extract text.
+Click or enter any unknown Tamil word to get its **meaning** and **antonyms** in Tamil.
+""")
 
-def normalize(word):
-    return word.strip().replace("்", "")
+# --- OCR Functions ---
+def preprocess_for_tamil(img):
+img_array = np.array(img)
+gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+denoised = cv2.fastNlMeansDenoising(gray, h=10)
+_, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+return thresh
 
-# ================= LEMMATIZER & MORPH =================
-def lemmatize_tamil(word):
-    suffixes = ["கிறேன்", "கிறான்", "கிறாள்", "த்தேன்", "த்தான்", "த்தாள்"]
-    for suf in suffixes:
-        if word.endswith(suf):
-            return word[:-len(suf)]
-    return word
+def extract_tamil_text(image):
+processed = preprocess_for_tamil(image)
+custom_config = r'--oem 3 --psm 4 -l tam'
+raw_text = pytesseract.image_to_string(processed, config=custom_config)
+clean_text = raw_text.replace('|','').replace('I','')
+clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text)
+return clean_text.strip()
 
-# ================= OCR =================
-def ocr_image(image):
-    img = np.array(image)
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return pytesseract.image_to_string(thresh, lang="tam")
+# --- Meaning & Antonyms Functions ---
+def fetch_english_antonyms(word_en):
+url = f"https://api.datamuse.com/words?rel_ant={word_en}"
+try:
+resp = requests.get(url, timeout=5)
+resp.raise_for_status()
+data = resp.json()
+antonyms = [item['word'] for item in data]
+return antonyms if antonyms else ["❌ Antonyms not found"]
+except:
+return ["❌ Antonyms not found"]
 
-# ================= LLM MODELS (Load once) =================
-@st.cache_resource
-def load_llm(model_name):
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoTokenizer.from_pretrained(model_name)
-        return pipeline("text-generation", model=model, tokenizer=tokenizer, device=0)
-    except:
-        return None
+def get_tamil_meaning(word_tam):
+try:
+meaning_en = GoogleTranslator(source='ta', target='en').translate(word_tam)
+meaning_ta = GoogleTranslator(source='en', target='ta').translate(meaning_en)
+return meaning_en, meaning_ta
+except:
+return None, "❌ Meaning not found"
 
-# ================= REINFORCEMENT LEARNING AGENT =================
-class RLVocabularyAgent:
-    def __init__(self):
-        self.known_words = set()
-        self.q_table = {}
-    
-    def get_state(self, word):
-        return "unknown" if word not in self.known_words else "known"
-    
-    def choose_action(self, state):
-        return random.choice(["llm", "api", "ocr", "user"]) if state == "unknown" else "lookup"
-    
-    def learn(self, word, success):
-        self.known_words.add(word)
+def get_antonyms_tamil(meaning_en):
+antonyms_en = fetch_english_antonyms(meaning_en)
+antonyms_ta = []
+for ant in antonyms_en:
+if ant == "❌ Antonyms not found":
+antonyms_ta.append(ant)
+else:
+try:
+ant_ta = GoogleTranslator(source='en', target='ta').translate(ant)
+antonyms_ta.append(ant_ta)
+except:
+antonyms_ta.append("❌ Antonyms not found")
+return antonyms_ta
 
-agent = RLVocabularyAgent()
+# --- Upload Section ---
+uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
-# ================= CORE 20-LEVEL ANALYSIS =================
-def analyze_word(word, context=""):
-    word = normalize(word)
-    dataset = load_dataset()
+extracted_text = ""
+if uploaded_file:
+with st.spinner("Processing Tamil Text..."):
+if uploaded_file.type == "application/pdf":
+with pdfplumber.open(uploaded_file) as pdf:
+for i, page in enumerate(pdf.pages):
+img = page.to_image(resolution=500).original
+extracted_text += extract_tamil_text(img) + "\n\n"
+else:
+img = Image.open(uploaded_file)
+extracted_text = extract_tamil_text(img)
 
-    # Level 1: Dataset
-    if word in dataset:
-        entry = dataset[word]
-        return f"**Level 1 - Dataset:**\n\nMeaning: {entry['meaning']}\nSynonym: {entry.get('synonym','')}\nAntonym: {entry.get('antonym','')}", "Dataset"
+st.subheader("📄 Extracted Tamil Text")
+st.text_area("OCR Output", extracted_text, height=400)
 
-    # Level 2: OCR Context
-    if context and word in context:
-        return "**Level 2 - OCR Context Match**", "OCR"
+# --- Word Meaning & Antonyms Section ---
+st.subheader("🔍 Get Meaning & Antonyms")
+word_tam = st.text_input("Enter Tamil word (அறியாத சொல்)")
 
-    # Level 3: Lemmatization
-    lemma = lemmatize_tamil(word)
-    if lemma != word:
-        if lemma in dataset:
-            entry = dataset[lemma]
-            return f"**Level 3 - Lemma:** {lemma}\n\nMeaning: {entry['meaning']}", "Lemma"
+if word_tam:
+with st.spinner("Fetching meaning and antonyms..."):
+meaning_en, meaning_ta = get_tamil_meaning(word_tam)
+antonyms_ta = get_antonyms_tamil(meaning_en)
 
-    # Level 4: Transliteration
-    translit = {"vanakkam": "வணக்கம்"}
-    if word in translit.values():
-        return f"**Level 4 - Transliteration**", "Translit"
-
-    # Level 5: Tamil → English
-    try:
-        en_word = GoogleTranslator(source="ta", target="en").translate(word)
-    except:
-        return "❌ Not found", "Failed"
-
-    # Level 6: WordNet
-    synsets = wordnet.synsets(en_word)
-    synonyms = [l.name() for s in synsets for l in s.lemmas()]
-    antonyms = [l.antonyms()[0].name() for s in synsets for l in s.lemmas() if l.antonyms()]
-
-    # Level 7: Datamuse
-    datamuse_syns = requests.get(f"https://api.datamuse.com/words?rel_syn={en_word}").json()
-    datamuse_syns = [w["word"] for w in datamuse_syns[:3]]
-
-    # Level 8-13: LLMs (Tamil-LLaMA, Mistral, Gemma)
-    # Use Hugging Face pipelines (add API keys or local models)
-
-    # Level 14: suriya7/English-to-Tamil
-    try:
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-        tokenizer = AutoTokenizer.from_pretrained("suriya7/English-to-Tamil")
-        model = AutoModelForSeq2SeqLM.from_pretrained("suriya7/English-to-Tamil")
-        # Add translation logic
-    except:
-        pass
-
-    # Level 17-20: RL, Fallback, Learn
-    state = agent.get_state(word)
-    action = agent.choose_action(state)
-    agent.learn(word, success=True)
-
-    # Final Output
-    ta_syns = [GoogleTranslator(source="en", target="ta").translate(s) for s in synonyms[:2]]
-    ta_antonyms = [GoogleTranslator(source="en", target="ta").translate(a) for a in antonyms[:2]]
-
-    return (
-        f"**🌐 English:** {en_word}\n"
-        f"**📖 Meaning:** {en_word} (via translation)\n"
-        f"**🔄 Synonyms:** {', '.join(ta_syns)}\n"
-        f"**🚫 Antonyms:** {', '.join(ta_antonyms)}\n"
-        f"**🤖 RL Action:** {action}\n"
-        f"**🔍 Level:** 20/20"
-    ), "LLM + RL"
-
-# ================= UI =================
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📄 Upload Document")
-    file = st.file_uploader("PDF/Image", type=["pdf", "png", "jpg"])
-    ocr_text = ""
-    if file:
-        if file.type == "application/pdf":
-            with pdfplumber.open(file) as pdf:
-                ocr_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
-        else:
-            ocr_text = ocr_image(Image.open(file))
-        st.text_area("Extracted Text", ocr_text, height=300)
-
-with col2:
-    st.subheader("🔍 Analyze Word")
-    word = st.text_input("Enter Tamil word")
-    if st.button("Analyze"):
-        if word:
-            result, src = analyze_word(word, ocr_text)
-            st.session_state.history.insert(0, {"word": word, "result": result, "src": src})
-
-    for h in st.session_state.history:
-        with st.expander(f"📖 {h['word']} ({h['src']})"):
-            st.markdown(h["result"])
-
-if st.sidebar.button("Reset"):
-    st.session_state.history = []
-    st.rerun()   
+st.write(f"**சொல்:** {word_tam}")
+st.write(f"**அர்த்தம் (தமிழ்):** {meaning_ta}")
+st.write(f"**எதிர்மறை சொல் (தமிழ்):** {', '.join(antonyms_ta)}")
