@@ -12,7 +12,9 @@ from nltk.corpus import wordnet
 import torch
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 import random
-
+import nltk
+nltk.download('wordnet')
+nltk.download('punkt')   
 # ================= CONFIG =================
 st.set_page_config(page_title="20-Level Tamil Lexical Analyzer", layout="wide")
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
