@@ -3,6 +3,17 @@ pytesseract
 pdfplumber
 opencv-python-headless
 numpy
+torch
+transformers
+streamlit
+nltk
+pytesseract
+pdfplumber
+opencv-python-headless
+deep-translator
+requests
+numpy
+Pillow   
 Pillow
 streamlit
 pytesseract
