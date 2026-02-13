@@ -8,26 +8,27 @@ from deep_translator import GoogleTranslator
 import requests
 import re
 
-# --- 1. PAGE CONFIG & THEME ---
+# --- 1. பக்க வடிவமைப்பு மற்றும் நிறங்கள் ---
 st.set_page_config(page_title="நிகண்டு | Digital Tamil Lexicon", layout="wide")
 
 def apply_rustic_theme():
-    # Parchment texture for a traditional feel
+    # காகித பின்னணி இழை
     bg_pattern = "https://www.transparenttextures.com/patterns/papyrus.png"
     
     st.markdown(f"""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Pavanam&family=Arima+Madurai:wght@700&display=swap');
         
-        /* Main background - Overriding dark mode defaults */
+        /* பின்னணி அமைப்பு */
         .stApp {{
             background-image: url("{bg_pattern}");
             background-color: #F7E7CE !important;
             background-attachment: fixed;
             color: #3E2723 !important;
+            font-family: 'Pavanam', sans-serif;
         }}
 
-        /* Heading Style */
+        /* தலைப்பு */
         .main-title {{
             font-family: 'Arima Madurai', cursive;
             color: #800000;
@@ -42,35 +43,40 @@ def apply_rustic_theme():
             margin-bottom: 30px;
         }}
 
-        /* FIXING THE BLACK BOXES: Forcing Widget Backgrounds */
-        /* This targets the file uploader and text input containers */
-        [data-testid="stFileUploader"], [data-testid="stTextInput"], [data-testid="stTextArea"] {{
-            background-color: rgba(255, 255, 255, 0.4) !important;
-            padding: 10px;
-            border-radius: 10px;
-        }}
-
-        /* Specific fix for the file dropzone area */
+        /* பதிவேற்றும் பெட்டி (Upload Box) - கருப்பு நிறம் நீக்கப்பட்டது */
         [data-testid="stFileUploaderDropzone"] {{
-            background-color: #FFF9F0 !important;
-            border: 2px dashed #800000 !important;
+            background-color: #FFF9F0 !important; /* சந்தன நிறம் */
+            border: 2px dashed #800000 !important; /* சிவப்பு பார்டர் */
+            color: #800000 !important;
+        }}
+        
+        /* பதிவேற்றும் பெட்டியின் உள்ளே இருக்கும் எழுத்துக்கள் */
+        [data-testid="stFileUploaderDropzone"] div div span {{
             color: #3E2723 !important;
         }}
 
-        /* Specific fix for Input fields */
+        /* Browse Files பட்டன் நிறம் */
+        [data-testid="stFileUploaderDropzone"] button {{
+            background-color: #800000 !important;
+            color: #D4AF37 !important;
+            border-radius: 5px;
+        }}
+
+        /* தேடல் மற்றும் உரை பெட்டிகள் */
         input, textarea {{
             background-color: #FFFDF9 !important;
             color: #3E2723 !important;
             border: 1px solid #800000 !important;
         }}
 
-        /* Result Card */
+        /* முடிவு அட்டை */
         .result-card {{
             background-color: #FFFFFF;
             padding: 20px;
             border-left: 10px solid #800000;
             box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
             margin-top: 15px;
+            border-radius: 5px;
         }}
 
         .label {{ color: #1B5E20; font-weight: bold; }}
@@ -79,7 +85,7 @@ def apply_rustic_theme():
 
 apply_rustic_theme()
 
-# --- 2. BACKEND LOGIC ---
+# --- 2. தரவுச் செயலாக்கம் ---
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 def get_word_info(target_word):
@@ -119,7 +125,7 @@ def process_ocr(image):
     config = r'--oem 3 --psm 6 -l tam+eng'
     return pytesseract.image_to_string(thresh, config=config).strip()
 
-# --- 3. UI LAYOUT ---
+# --- 3. பயனர் இடைமுகம் ---
 st.markdown('<h1 class="main-title">நிகண்டு</h1>', unsafe_allow_html=True)
 st.markdown('<div class="title-divider"></div>', unsafe_allow_html=True)
 
@@ -127,10 +133,10 @@ col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("📜 ஆவண ஆய்வு (Extraction)")
-    uploaded_file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("கோப்பைத் தேர்ந்தெடுக்கவும்", type=["pdf", "png", "jpg", "jpeg"])
     
     if uploaded_file:
-        with st.spinner("Processing..."):
+        with st.spinner("ஆவணம் வாசிக்கப்படுகிறது..."):
             if uploaded_file.type == "application/pdf":
                 with pdfplumber.open(uploaded_file) as pdf:
                     ocr_text = "\n".join([process_ocr(p.to_image(resolution=300).original) for p in pdf.pages])
@@ -138,11 +144,11 @@ with col1:
                 ocr_text = process_ocr(Image.open(uploaded_file))
         
         st.markdown("<p class='label'>பிரித்தெடுக்கப்பட்ட உரை:</p>", unsafe_allow_html=True)
-        st.text_area("", ocr_text, height=300)
+        st.text_area("", ocr_text, height=350)
 
 with col2:
     st.subheader("🔍 சொற்பொருள் தேடல்")
-    word_query = st.text_input("தேட வேண்டிய சொல்:")
+    word_query = st.text_input("சொல்லைத் தட்டச்சு செய்க:")
 
     if word_query:
         res = get_word_info(word_query)
@@ -152,7 +158,7 @@ with col2:
                     <p style="color: {res['color']}; font-size: 0.8rem; font-weight: bold;">{res['source']}</p>
                     <h2 style="border:none; color:#800000; margin-top:0;">{word_query}</h2>
                     <hr>
-                    <p><span class="label">பொருள்:</span><br><b style="font-size:1.4rem;">{res['meaning']}</b></p>
+                    <p><span class="label">பொருள்:</span><br><b style="font-size:1.5rem;">{res['meaning']}</b></p>
                     <p><span class="label">இணையான சொல்:</span> {res['synonym']}</p>
                     <p><span class="label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
                 </div>
@@ -160,4 +166,4 @@ with col2:
         else:
             st.error("தகவல் கிடைக்கவில்லை.")
 
-st.markdown("<br><br><p style='text-align:center; color:#800000;'>தமிழ் இனிது | ஆய்வகம் 2026</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align:center; color:#800000; font-weight:bold;'>தமிழ் இனிது | ஆய்வகம் 2026</p>", unsafe_allow_html=True)
