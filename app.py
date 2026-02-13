@@ -8,78 +8,85 @@ from deep_translator import GoogleTranslator
 import requests
 import re
 
-# --- CONFIG & CLASSIC TAMIL STYLING ---
+# --- 1. பக்க வடிவமைப்பு மற்றும் ஸ்டைலிங் ---
 st.set_page_config(page_title="நிகண்டு | Digital Tamil Lexicon", layout="wide")
 
-def apply_nigandu_theme():
+def apply_rustic_theme():
     st.markdown("""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Pavanam&family=Arima+Madurai:wght@700&display=swap');
         
+        /* பின்னணி நிறம் - பழைய காகித நிறம் */
         .stApp {
-            background-color: #F4ECE1; /* Sandalwood/Old Paper tint */
+            background-color: #F7E7CE; 
             color: #3E2723;
+            font-family: 'Pavanam', sans-serif;
         }
 
-        /* The Main Header */
+        /* தலைப்பு - குங்குமச் சிவப்பு */
         .main-title {
             font-family: 'Arima Madurai', cursive;
             color: #800000;
             text-align: center;
-            font-size: 3.5rem;
+            font-size: 4rem;
             margin-bottom: 0px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* Decorative Border like a Temple Pillar */
+        /* கோடு அலங்காரம் */
         .title-divider {
-            height: 5px;
+            height: 4px;
             background: linear-gradient(90deg, transparent, #D4AF37, #800000, #D4AF37, transparent);
             margin-bottom: 30px;
         }
 
-        /* Result Card styling */
+        /* உள்ளீடு பெட்டிகள் (Search Box) - சந்தன நிறம் */
+        .stTextInput>div>div>input, .stTextArea>div>div>textarea {
+            background-color: #FFF9F0 !important;
+            border: 2px solid #800000 !important;
+            color: #3E2723 !important;
+            border-radius: 0px !important;
+        }
+
+        /* முடிவு அட்டை (Result Card) */
         .result-card {
-            background-color: #FFFDF9;
-            padding: 25px;
-            border-radius: 4px;
+            background-color: #FFFFFF;
+            padding: 20px;
             border: 1px solid #D4AF37;
             border-left: 10px solid #800000;
-            box-shadow: 8px 8px 0px #D4AF37;
-            margin-top: 10px;
+            box-shadow: 5px 5px 0px #800000;
+            margin-top: 15px;
         }
 
-        .label {
+        /* டேட்டா லேபிள்கள் - பச்சை நிறம் */
+        .data-label {
+            color: #1B5E20;
             font-weight: bold;
-            color: #5D4037;
-            text-transform: uppercase;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
         }
 
-        /* Sidebar & Inputs */
-        .stTextInput input {
-            border: 2px solid #800000 !important;
-            border-radius: 0px !important;
+        /* பட்டன் ஸ்டைல் */
+        .stButton>button {
+            background-color: #800000;
+            color: #D4AF37;
+            border: 1px solid #D4AF37;
+            width: 100%;
         }
         </style>
     """, unsafe_allow_html=True)
 
-apply_nigandu_theme()
+apply_rustic_theme()
 
-# --- BACKEND LOGIC ---
+# --- 2. தரவு மற்றும் செயலாக்க செயல்பாடுகள் ---
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 def get_word_info(target_word):
     target_word = target_word.strip()
-    
-    # 1. Dataset Fetch
     try:
         r = requests.get(f"{JSON_URL}?nocache=1", timeout=5)
         dataset = r.json() if r.status_code == 200 else []
-    except:
-        dataset = []
+    except: dataset = []
 
-    # 2. Search Dataset
+    # 1. முதலில் டேட்டாசெட்டில் தேடவும்
     for entry in dataset:
         if str(entry.get("word", "")).strip() == target_word:
             return {
@@ -87,62 +94,72 @@ def get_word_info(target_word):
                 "meaning": entry.get("meaning"),
                 "synonym": entry.get("synonym", "இல்லை"),
                 "antonym": entry.get("antonym", "இல்லை"),
-                "type": "verified"
+                "color": "#1B5E20"
             }
 
-    # 3. AI Fallback (Guarantees a Meaning)
+    # 2. இல்லை எனில் AI மூலம் பொருள் கண்டறியவும்
     try:
-        en_val = GoogleTranslator(source='ta', target='en').translate(target_word)
-        ta_val = GoogleTranslator(source='en', target='ta').translate(en_val)
+        to_en = GoogleTranslator(source='ta', target='en').translate(target_word)
+        meaning_ta = GoogleTranslator(source='en', target='ta').translate(to_en)
         return {
             "source": "AI Inference (தானியங்கிப் பொருள்)",
-            "meaning": ta_val,
-            "synonym": "கிடைக்கவில்லை",
-            "antonym": "கிடைக்கவில்லை",
-            "type": "ai"
+            "meaning": meaning_ta,
+            "synonym": "தகவல் இல்லை",
+            "antonym": "தகவல் இல்லை",
+            "color": "#E65100"
         }
-    except:
-        return None
+    except: return None
 
-# --- UI LAYOUT ---
+def process_ocr(image):
+    img = np.array(image)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # தெளிவான எழுத்துக்களுக்கு Adaptive Thresholding
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    config = r'--oem 3 --psm 6 -l tam+eng'
+    return pytesseract.image_to_string(thresh, config=config).strip()
+
+# --- 3. பயனர் இடைமுகம் (UI) ---
 st.markdown('<h1 class="main-title">நிகண்டு</h1>', unsafe_allow_html=True)
 st.markdown('<div class="title-divider"></div>', unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-style: italic; margin-top:-20px;'>The Classic Digital Tamil Lexicon</p>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.subheader("📜 ஆவணப் பதிவேற்றம்")
-    uploaded_file = st.file_uploader("Upload Document (Image/PDF)", type=["pdf", "png", "jpg", "jpeg"])
+    st.subheader("📜 ஆவண ஆய்வு (Extraction)")
+    uploaded_file = st.file_uploader("கோப்பைத் தேர்ந்தெடுக்கவும்", type=["pdf", "png", "jpg", "jpeg"])
+    
+    ocr_text = ""
     if uploaded_file:
-        st.info("ஆவணம் பெறப்பட்டது. உரையைக் கண்டறிய OCR கருவியைப் பயன்படுத்தவும்.")
-        # [Insert OCR Processing code block here as previously provided]
+        with st.spinner("உரையைக் கண்டறிகிறது..."):
+            if uploaded_file.type == "application/pdf":
+                with pdfplumber.open(uploaded_file) as pdf:
+                    ocr_text = "\n".join([process_ocr(p.to_image(resolution=300).original) for p in pdf.pages])
+            else:
+                ocr_text = process_ocr(Image.open(uploaded_file))
+        
+        # பிரித்தெடுக்கப்பட்ட உரையை பயனர் பார்ப்பதற்கு
+        st.markdown("<p class='data-label'>கண்டறியப்பட்ட உரை (Extracted Text):</p>", unsafe_allow_html=True)
+        st.text_area("", ocr_text, height=300, key="ocr_output")
 
 with col2:
     st.subheader("🔍 சொற்பொருள் தேடல்")
-    query = st.text_input("தேட வேண்டிய சொல்:", placeholder="எ.கா: அறம்")
+    word_query = st.text_input("தேட வேண்டிய சொல் (எ.கா: சான்றிதழ்):")
 
-    if query:
-        res = get_word_info(query)
+    if word_query:
+        res = get_word_info(word_query)
         if res:
-            source_style = "color: #2E7D32;" if res['type'] == 'verified' else "color: #E65100;"
-            
             st.markdown(f"""
                 <div class="result-card">
-                    <p style="{source_style} font-size: 0.7rem; font-weight: bold;">{res['source']}</p>
-                    <h2 style="border:none; margin-top:0; color:#800000;">{query}</h2>
-                    <hr>
-                    <p><span class="label">பொருள்:</span><br><b style="font-size:1.3rem;">{res['meaning']}</b></p>
-                    <p><span class="label">இணையான சொல்:</span> {res['synonym']}</p>
-                    <p><span class="label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
+                    <p style="color: {res['color']}; font-size: 0.8rem; font-weight: bold;">{res['source']}</p>
+                    <h2 style="border:none; color:#800000; margin-top:0;">{word_query}</h2>
+                    <hr style="border: 0.5px solid #D4AF37;">
+                    <p><span class="data-label">பொருள்:</span><br><b style="font-size:1.4rem;">{res['meaning']}</b></p>
+                    <p><span class="data-label">இணையான சொல்:</span> {res['synonym']}</p>
+                    <p><span class="data-label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.error("மன்னிக்கவும், அந்தச் சொல் நிகண்டில் இல்லை.")
+            st.error("மன்னிக்கவும், தகவல் கிடைக்கவில்லை.")
 
-st.markdown("""
-    <br><br>
-    <div style="text-align: center; border-top: 1px solid #D4AF37; padding-top: 10px;">
-        <p style="color: #8B4513; font-size: 0.9rem;">கல் தோன்றி மண் தோன்றாக் காலத்தே முன் தோன்றிய மூத்த தமிழ்</p>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align:center; color:#800000; opacity:0.7;'>© 2026 நிகண்டு டிஜிட்டல் அகராதி</p>", unsafe_allow_html=True)
