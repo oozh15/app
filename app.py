@@ -132,8 +132,8 @@ st.markdown('<div class="title-divider"></div>', unsafe_allow_html=True)
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.subheader("📜 ஆவண ஆய்வு (Extraction)")
-    uploaded_file = st.file_uploader("கோப்பைத் தேர்ந்தெடுக்கவும்", type=["pdf", "png", "jpg", "jpeg"])
+    st.subheader("ஆவண ஆய்வு (Extraction)")
+    uploaded_file = st.file_uploader( type=["pdf", "png", "jpg", "jpeg"])
     
     if uploaded_file:
         with st.spinner("ஆவணம் வாசிக்கப்படுகிறது..."):
@@ -148,7 +148,7 @@ with col1:
 
 with col2:
     st.subheader("🔍 சொற்பொருள் தேடல்")
-    word_query = st.text_input("சொல்லைத் தட்டச்சு செய்க:")
+    word_query = st.text_input()
 
     if word_query:
         res = get_word_info(word_query)
