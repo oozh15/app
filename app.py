@@ -6,167 +6,134 @@ import cv2
 import numpy as np
 from deep_translator import GoogleTranslator
 import requests
+import re
 
-# --- CONFIG & STYLING ---
-st.set_page_config(page_title="செந்தமிழ் அகராதி | Priority Lexicon", layout="wide")
+# --- CONFIG & RUSTIC STYLING ---
+st.set_page_config(page_title="செந்தமிழ் அகராதி", layout="wide")
 
-def apply_rustic_theme():
+def apply_custom_theme():
     st.markdown("""
         <style>
-        /* Main background and font */
-        @import url('https://fonts.googleapis.com/css2?family=Latha&family=Pavanam&display=swap');
-        
-        .stApp {
-            background-color: #FDF5E6; /* Old Parchment / Off-white */
-            color: #4A2C2A;
-        }
-
-        /* Sidebar and Headers */
-        h1, h2, h3 {
-            color: #800000 !important; /* Deep Maroon / Kumkum */
-            font-family: 'Pavanam', sans-serif;
-            border-bottom: 2px solid #D4AF37; /* Gold separator */
-            padding-bottom: 10px;
-        }
-
-        /* Input boxes */
-        .stTextInput input, .stTextArea textarea {
-            background-color: #FFF9F0 !important;
-            border: 1px solid #D4AF37 !important;
-            border-radius: 5px;
-            color: #4A2C2A !important;
-        }
-
-        /* Buttons */
-        .stButton>button {
-            background-color: #800000;
-            color: #D4AF37;
-            border: 2px solid #D4AF37;
-            border-radius: 8px;
-            font-weight: bold;
-            transition: 0.3s;
-        }
-        
-        .stButton>button:hover {
-            background-color: #D4AF37;
-            color: #800000;
-        }
-
-        /* Decorative Card for results */
+        @import url('https://fonts.googleapis.com/css2?family=Pavanam&display=swap');
+        .stApp { background-color: #FDF5E6; color: #4A2C2A; font-family: 'Pavanam', sans-serif; }
+        h1, h2, h3 { color: #800000 !important; border-bottom: 2px solid #D4AF37; }
         .result-card {
-            background-color: #FFFFFF;
-            padding: 25px;
-            border-radius: 15px;
-            border-left: 10px solid #800000;
-            box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
-            margin-top: 20px;
+            background-color: #FFFFFF; padding: 20px; border-radius: 10px;
+            border-left: 8px solid #800000; box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
-
-        /* Footer Decoration */
-        .footer {
-            text-align: center;
-            font-size: 0.8rem;
-            color: #8B4513;
-            margin-top: 50px;
-            border-top: 1px solid #D4AF37;
-            padding-top: 20px;
-        }
+        .data-label { font-weight: bold; color: #800000; }
+        .stButton>button { background-color: #800000; color: #D4AF37; border: 1px solid #D4AF37; }
         </style>
     """, unsafe_allow_html=True)
 
-apply_rustic_theme()
+apply_custom_theme()
 
-# --- LOGIC ---
+# --- BACKEND FUNCTIONS ---
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 def fetch_data():
     try:
         r = requests.get(f"{JSON_URL}?nocache=1", timeout=5)
         return r.json() if r.status_code == 200 else []
-    except:
-        return []
+    except: return []
 
 def get_word_info(target_word):
     target_word = target_word.strip()
     dataset = fetch_data()
+    
+    # 1. Search in Verified Dataset
     if dataset:
         for entry in dataset:
-            db_word = str(entry.get("word", "")).strip()
-            if db_word == target_word:
+            if str(entry.get("word", "")).strip() == target_word:
                 return {
                     "source": "Verified Dataset (அங்கீகரிக்கப்பட்டது)",
                     "meaning": entry.get("meaning"),
                     "synonym": entry.get("synonym", "இல்லை"),
-                    "antonym": entry.get("antonym", "இல்லை")
-                }, True
+                    "antonym": entry.get("antonym", "இல்லை"),
+                    "status": "success"
+                }
 
+    # 2. Fallback to AI Translation (Meaning Guaranteed)
     try:
-        to_en = GoogleTranslator(source='ta', target='en').translate(target_word).lower()
-        if "tender" in to_en and target_word == "அக்கறை": to_en = "care/concern"
-        to_ta = GoogleTranslator(source='en', target='ta')
-        
+        to_en = GoogleTranslator(source='ta', target='en').translate(target_word)
+        meaning_ta = GoogleTranslator(source='en', target='ta').translate(to_en)
         return {
             "source": "AI Bridge (தானியங்கி முறை)",
-            "meaning": to_ta.translate(to_en),
-            "synonym": "இல்லை",
-            "antonym": "நேரடி எதிர்ச்சொல் இல்லை"
-        }, False
+            "meaning": meaning_ta,
+            "synonym": "தகவல் இல்லை",
+            "antonym": "தகவல் இல்லை",
+            "status": "warning"
+        }
     except:
-        return None, False
+        return None
 
-def process_ocr(image):
+def process_ocr_advanced(image):
+    # Convert to OpenCV format
     img = np.array(image)
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    config = r'--oem 3 --psm 4 -l tam'
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    
+    # Pre-processing for "Real" Documents (Denoising + Adaptive Threshold)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    
+    config = r'--oem 3 --psm 6 -l tam+eng'
     return pytesseract.image_to_string(thresh, config=config).strip()
 
+def auto_extract_details(text):
+    # Search for common certificate patterns
+    cert_no = re.search(r'TN-\d+', text)
+    date = re.search(r'\d{2}-\d{2}-\d{4}', text)
+    return {
+        "Cert No": cert_no.group(0) if cert_no else "Not detected",
+        "Date": date.group(0) if date else "Not detected"
+    }
+
 # --- UI LAYOUT ---
-st.markdown("<h1 style='text-align: center;'>📜 முன்னுரிமை அகராதி</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-style: italic;'>Priority Lexicon - Classic Tamil Research Tool</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>📜 முன்னுரிமை அகராதி (Lexicon)</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.subheader("📖 ஆவணப் பதிவேற்றம் (Upload)")
-    uploaded_file = st.file_uploader("படங்கள் அல்லது PDF கோப்புகளைத் தேர்ந்தெடுக்கவும்", type=["pdf", "png", "jpg", "jpeg"])
+    st.subheader("📄 ஆவண ஆய்வு (Document Analysis)")
+    uploaded_file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
     
-    ocr_text = ""
     if uploaded_file:
-        with st.spinner("உரையைக் கண்டறியும் பணி நடக்கிறது..."):
+        with st.spinner("Processing..."):
             if uploaded_file.type == "application/pdf":
                 with pdfplumber.open(uploaded_file) as pdf:
-                    for page in pdf.pages:
-                        ocr_text += process_ocr(page.to_image(resolution=500).original) + "\n"
+                    raw_text = "\n".join([process_ocr_advanced(p.to_image(resolution=300).original) for p in pdf.pages])
             else:
-                ocr_text = process_ocr(Image.open(uploaded_file))
-        st.text_area("கண்டறியப்பட்ட உரை (Extracted Text):", ocr_text, height=300)
+                raw_text = process_ocr_advanced(Image.open(uploaded_file))
+            
+            # Show Extracted Details
+            details = auto_extract_details(raw_text)
+            st.info(f"📍 கண்டறியப்பட்ட எண்: {details['Cert No']} | நாள்: {details['Date']}")
+            st.text_area("கண்டறியப்பட்ட உரை:", raw_text, height=200)
 
 with col2:
-    st.subheader("🔍 சொல் தேடல் (Word Search)")
-    word_query = st.text_input("தேட வேண்டிய சொல்லைத் தட்டச்சு செய்யவும்:", placeholder="எ.கா: அக்கறை")
+    st.subheader("🔍 சொல் தேடல் (Dictionary)")
+    word_query = st.text_input("சொல்லைத் தட்டச்சு செய்யவும்:", placeholder="எ.கா: சான்றிதழ்")
 
     if word_query:
-        res, is_dataset = get_word_info(word_query)
+        res = get_word_info(word_query)
         if res:
-            source_color = "#2E7D32" if is_dataset else "#BF360C"
-            
+            # Displaying the Result Card
             st.markdown(f"""
                 <div class="result-card">
-                    <p style="color: {source_color}; font-weight: bold; font-size: 0.9rem;">📍 மூலம்: {res['source']}</p>
-                    <h2 style="border:none; margin-top:0;">{word_query}</h2>
-                    <p style="font-size: 1.2rem;"><b>பொருள்:</b> {res['meaning']}</p>
-                    <hr style="border: 0.5px solid #EEE;">
-                    <p><b>இணையான சொற்கள்:</b> {res['synonym']}</p>
-                    <p><b>எதிர்ச்சொல்:</b> {res['antonym']}</p>
+                    <small style="color:gray;">மூலம்: {res['source']}</small>
+                    <h2 style="border:none; color:#800000; margin-top:5px;">{word_query}</h2>
+                    <p style="font-size:1.2rem;"><span class="data-label">பொருள் (Meaning):</span> {res['meaning']}</p>
+                    <p><span class="data-label">இணையான சொல்:</span> {res['synonym']}</p>
+                    <p><span class="data-label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
                 </div>
             """, unsafe_allow_html=True)
+            
+            if res['status'] == "warning":
+                st.caption("⚠️ குறிப்பு: இந்தத் தகவல் AI மூலம் மொழிபெயர்க்கப்பட்டது.")
         else:
-            st.error("மன்னிக்கவும், தகவல் கிடைக்கவில்லை.")
+            st.error("தகவல் கிடைக்கவில்லை.")
 
-st.markdown("""
-    <div class="footer">
-        தமிழ் இனிது | செந்தமிழ் ஆய்வகம் © 2024
-    </div>
-""", unsafe_allow_html=True)
+st.divider()
+st.markdown("<p style='text-align:center; color:brown;'>தமிழ் இனிது | ஆய்வகம் 2024</p>", unsafe_allow_html=True)
