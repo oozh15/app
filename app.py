@@ -8,33 +8,31 @@ from deep_translator import GoogleTranslator
 import requests
 import re
 
-# --- 1. பக்க வடிவமைப்பு மற்றும் நிறங்கள் ---
-st.set_page_config(page_title="நிகண்டு | Digital Tamil Lexicon", layout="wide")
+# --- 1. PAGE CONFIG & THEME ---
+st.set_page_config(page_title="Nigandu | Digital Lexicon", layout="wide")
 
 def apply_rustic_theme():
-    # காகித பின்னணி இழை
     bg_pattern = "https://www.transparenttextures.com/patterns/papyrus.png"
     
     st.markdown(f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Pavanam&family=Arima+Madurai:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,700;1,400&display=swap');
         
-        /* பின்னணி அமைப்பு */
         .stApp {{
             background-image: url("{bg_pattern}");
             background-color: #F7E7CE !important;
             background-attachment: fixed;
             color: #3E2723 !important;
-            font-family: 'Pavanam', sans-serif;
+            font-family: 'Crimson Text', serif;
         }}
 
-        /* தலைப்பு */
         .main-title {{
-            font-family: 'Arima Madurai', cursive;
+            font-family: 'Crimson Text', serif;
             color: #800000;
             text-align: center;
-            font-size: 4rem;
+            font-size: 4.5rem;
             margin-bottom: 0px;
+            font-weight: bold;
         }}
 
         .title-divider {{
@@ -43,33 +41,19 @@ def apply_rustic_theme():
             margin-bottom: 30px;
         }}
 
-        /* பதிவேற்றும் பெட்டி (Upload Box) - கருப்பு நிறம் நீக்கப்பட்டது */
+        /* Fix for Black Upload Boxes */
         [data-testid="stFileUploaderDropzone"] {{
-            background-color: #FFF9F0 !important; /* சந்தன நிறம் */
-            border: 2px dashed #800000 !important; /* சிவப்பு பார்டர் */
+            background-color: #FFF9F0 !important;
+            border: 2px dashed #800000 !important;
             color: #800000 !important;
         }}
         
-        /* பதிவேற்றும் பெட்டியின் உள்ளே இருக்கும் எழுத்துக்கள் */
-        [data-testid="stFileUploaderDropzone"] div div span {{
-            color: #3E2723 !important;
-        }}
-
-        /* Browse Files பட்டன் நிறம் */
-        [data-testid="stFileUploaderDropzone"] button {{
-            background-color: #800000 !important;
-            color: #D4AF37 !important;
-            border-radius: 5px;
-        }}
-
-        /* தேடல் மற்றும் உரை பெட்டிகள் */
         input, textarea {{
             background-color: #FFFDF9 !important;
             color: #3E2723 !important;
             border: 1px solid #800000 !important;
         }}
 
-        /* முடிவு அட்டை */
         .result-card {{
             background-color: #FFFFFF;
             padding: 20px;
@@ -85,34 +69,36 @@ def apply_rustic_theme():
 
 apply_rustic_theme()
 
-# --- 2. தரவுச் செயலாக்கம் ---
+# --- 2. BACKEND LOGIC (Modified for English) ---
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 def get_word_info(target_word):
-    target_word = target_word.strip()
+    target_word = target_word.strip().lower()
     try:
         r = requests.get(f"{JSON_URL}?nocache=1", timeout=5)
         dataset = r.json() if r.status_code == 200 else []
     except: dataset = []
 
+    # 1. Search Dataset
     for entry in dataset:
-        if str(entry.get("word", "")).strip() == target_word:
+        if str(entry.get("word", "")).strip().lower() == target_word:
             return {
-                "source": "Verified Manuscript (தரவுத்தளம்)",
+                "source": "Verified Manuscript (Database)",
                 "meaning": entry.get("meaning"),
-                "synonym": entry.get("synonym", "இல்லை"),
-                "antonym": entry.get("antonym", "இல்லை"),
+                "synonym": entry.get("synonym", "None"),
+                "antonym": entry.get("antonym", "None"),
                 "color": "#1B5E20"
             }
 
+    # 2. AI Fallback (Translating to English)
     try:
-        to_en = GoogleTranslator(source='ta', target='en').translate(target_word)
-        meaning_ta = GoogleTranslator(source='en', target='ta').translate(to_en)
+        # If input is English, translate to Tamil for the meaning, or vice-versa
+        translated_meaning = GoogleTranslator(source='auto', target='en').translate(target_word)
         return {
-            "source": "AI Inference (தானியங்கிப் பொருள்)",
-            "meaning": meaning_ta,
-            "synonym": "தகவல் இல்லை",
-            "antonym": "தகவல் இல்லை",
+            "source": "AI Inference (Automated)",
+            "meaning": translated_meaning,
+            "synonym": "Not available",
+            "antonym": "Not available",
             "color": "#E65100"
         }
     except: return None
@@ -122,33 +108,34 @@ def process_ocr(image):
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-    config = r'--oem 3 --psm 6 -l tam+eng'
+    # Configured for English + Tamil OCR
+    config = r'--oem 3 --psm 6 -l eng+tam'
     return pytesseract.image_to_string(thresh, config=config).strip()
 
-# --- 3. பயனர் இடைமுகம் ---
-st.markdown('<h1 class="main-title">நிகண்டு</h1>', unsafe_allow_html=True)
+# --- 3. UI LAYOUT (English UI) ---
+st.markdown('<h1 class="main-title">Nigandu</h1>', unsafe_allow_html=True)
 st.markdown('<div class="title-divider"></div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
-    st.subheader("ஆவண ஆய்வு (Extraction)")
-    uploaded_file = st.file_uploader( type=["pdf", "png", "jpg", "jpeg"])
+    st.subheader("📜 Document Extraction")
+    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "png", "jpg", "jpeg"])
     
     if uploaded_file:
-        with st.spinner("ஆவணம் வாசிக்கப்படுகிறது..."):
+        with st.spinner("Reading document..."):
             if uploaded_file.type == "application/pdf":
                 with pdfplumber.open(uploaded_file) as pdf:
                     ocr_text = "\n".join([process_ocr(p.to_image(resolution=300).original) for p in pdf.pages])
             else:
                 ocr_text = process_ocr(Image.open(uploaded_file))
         
-        st.markdown("<p class='label'>பிரித்தெடுக்கப்பட்ட உரை:</p>", unsafe_allow_html=True)
+        st.markdown("<p class='label'>Extracted Text:</p>", unsafe_allow_html=True)
         st.text_area("", ocr_text, height=350)
 
 with col2:
-    st.subheader("🔍 சொற்பொருள் தேடல்")
-    word_query = st.text_input()
+    st.subheader("🔍 Lexicon Search")
+    word_query = st.text_input("Enter a word to search:")
 
     if word_query:
         res = get_word_info(word_query)
@@ -156,14 +143,14 @@ with col2:
             st.markdown(f"""
                 <div class="result-card">
                     <p style="color: {res['color']}; font-size: 0.8rem; font-weight: bold;">{res['source']}</p>
-                    <h2 style="border:none; color:#800000; margin-top:0;">{word_query}</h2>
+                    <h2 style="border:none; color:#800000; margin-top:0;">{word_query.capitalize()}</h2>
                     <hr>
-                    <p><span class="label">பொருள்:</span><br><b style="font-size:1.5rem;">{res['meaning']}</b></p>
-                    <p><span class="label">இணையான சொல்:</span> {res['synonym']}</p>
-                    <p><span class="label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
+                    <p><span class="label">Meaning:</span><br><b style="font-size:1.5rem;">{res['meaning']}</b></p>
+                    <p><span class="label">Synonyms:</span> {res['synonym']}</p>
+                    <p><span class="label">Antonyms:</span> {res['antonym']}</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.error("தகவல் கிடைக்கவில்லை.")
+            st.error("Word not found in the Lexicon.")
 
-st.markdown("<br><br><p style='text-align:center; color:#800000; font-weight:bold;'>தமிழ் இனிது | ஆய்வகம் 2026</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align:center; color:#800000; font-weight:bold;'>Digital Lexicon | Research Lab 2026</p>", unsafe_allow_html=True)
