@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 import requests
 import wikipediaapi
-import re
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -20,29 +19,25 @@ def apply_theme():
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Pavanam&family=Arima+Madurai:wght@700&display=swap');
-
     .stApp {{
         background-image: url("{bg}");
         background-color: #F7E7CE;
         font-family: 'Pavanam', sans-serif;
         color: #3E2723;
     }}
-
-    .main-title {{
+    .title {{
         font-family: 'Arima Madurai', cursive;
         text-align: center;
         color: #800000;
-        font-size: 3.5rem;
+        font-size: 3.2rem;
     }}
-
     .card {{
         background: #fff;
-        padding: 20px;
+        padding: 18px;
         border-left: 8px solid #800000;
         box-shadow: 4px 4px 12px rgba(0,0,0,0.1);
         border-radius: 6px;
     }}
-
     .label {{
         font-weight: bold;
         color: #1B5E20;
@@ -67,7 +62,7 @@ def normalize_word(word):
             return word[:-len(suf)]
     return word
 
-# ---------------- DATASET ----------------
+# ---------------- DATASET (OPTIONAL) ----------------
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 def search_dataset(word):
@@ -80,14 +75,16 @@ def search_dataset(word):
         pass
     return None, None
 
-# ---------------- WIKIPEDIA ----------------
+# ---------------- WIKIPEDIA (VERSION-SAFE INIT) ----------------
 wiki_ta = wikipediaapi.Wikipedia(
-    language="ta",
+    "TamilLexiconApp/1.0",   # user_agent (POSITIONAL)
+    "ta",                    # language
     extract_format=wikipediaapi.ExtractFormat.WIKI
 )
 
 wiki_en = wikipediaapi.Wikipedia(
-    language="en",
+    "TamilLexiconApp/1.0",   # user_agent (POSITIONAL)
+    "en",                    # language
     extract_format=wikipediaapi.ExtractFormat.WIKI
 )
 
@@ -102,12 +99,12 @@ def search_wikipedia(word):
 
     return None, None
 
-# ---------------- MAIN SEARCH LOGIC ----------------
+# ---------------- MAIN SEARCH ----------------
 def get_meaning(word):
     word = word.strip()
     root = normalize_word(word)
 
-    # 1️⃣ Dataset search
+    # 1) Dataset
     meaning, source = search_dataset(word)
     if meaning:
         return meaning, source
@@ -117,7 +114,7 @@ def get_meaning(word):
         if meaning:
             return meaning, f"{source} (Root: {root})"
 
-    # 2️⃣ Wikipedia search
+    # 2) Wikipedia
     meaning, source = search_wikipedia(word)
     if meaning:
         return meaning, source
@@ -130,7 +127,7 @@ def get_meaning(word):
     return None, None
 
 # ---------------- UI ----------------
-st.markdown("<h1 class='main-title'>நிகண்டு</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='title'>நிகண்டு</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
