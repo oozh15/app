@@ -10,3 +10,11 @@ deep-translator
 requests
 Pillow
 googletrans==4.0.0-rc1   
+streamlit
+pdfplumber
+pillow
+pytesseract
+opencv-python-headless
+numpy
+requests
+wikipedia-api
