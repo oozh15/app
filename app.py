@@ -4,17 +4,19 @@ from PIL import Image
 import pytesseract
 import cv2
 import numpy as np
-from deep_translator import GoogleTranslator
 import requests
-import re
 
-# ------------------ 1. PAGE CONFIG ------------------
+# --------------------------------------------------
+# 1. PAGE CONFIG
+# --------------------------------------------------
 st.set_page_config(
     page_title="நிகண்டு | Digital Tamil Lexicon",
     layout="wide"
 )
 
-# ------------------ 2. THEME ------------------
+# --------------------------------------------------
+# 2. THEME
+# --------------------------------------------------
 def apply_rustic_theme():
     bg_pattern = "https://www.transparenttextures.com/patterns/papyrus.png"
 
@@ -31,8 +33,8 @@ def apply_rustic_theme():
 
     .main-title {{
         font-family: 'Arima Madurai', cursive;
-        text-align: center;
         color: #800000;
+        text-align: center;
         font-size: 4rem;
     }}
 
@@ -48,22 +50,25 @@ def apply_rustic_theme():
         border-left: 10px solid #800000;
         border-radius: 5px;
         box-shadow: 4px 4px 12px rgba(0,0,0,0.1);
+        margin-top: 15px;
     }}
 
     .label {{
-        font-weight: bold;
         color: #1B5E20;
+        font-weight: bold;
     }}
     </style>
     """, unsafe_allow_html=True)
 
 apply_rustic_theme()
 
-# ------------------ 3. LOAD DATASET (CACHED) ------------------
+# --------------------------------------------------
+# 3. LOAD TAMIL LEXICAL DATASET (CACHED)
+# --------------------------------------------------
 JSON_URL = "https://raw.githubusercontent.com/oozh15/app/main/tamil.json"
 
 @st.cache_data(show_spinner=False)
-def load_dataset():
+def load_lexical_data():
     try:
         r = requests.get(JSON_URL, timeout=5)
         if r.status_code == 200:
@@ -72,41 +77,28 @@ def load_dataset():
         pass
     return []
 
-DATASET = load_dataset()
+LEXICAL_DATA = load_lexical_data()
 
-# ------------------ 4. WORD MEANING FUNCTION ------------------
-translator = GoogleTranslator(source="ta", target="en")
-
+# --------------------------------------------------
+# 4. EXACT MEANING FETCH (NO AI)
+# --------------------------------------------------
 def get_word_info(word):
     word = word.strip()
 
-    # Step 1: Dataset meaning (Tamil → Tamil)
-    for entry in DATASET:
+    for entry in LEXICAL_DATA:
         if entry.get("word", "").strip() == word:
             return {
-                "source": "Verified Dataset (தரவுத்தளம்)",
-                "meaning": entry.get("meaning"),
+                "source": "Tamil Lexical Dataset (WordNet)",
+                "meaning": entry.get("meaning", "தகவல் இல்லை"),
                 "synonym": entry.get("synonym", "இல்லை"),
-                "antonym": entry.get("antonym", "இல்லை"),
-                "color": "#1B5E20"
+                "antonym": entry.get("antonym", "இல்லை")
             }
 
-    # Step 2: Translation fallback
-    try:
-        eng = translator.translate(word)
-        ta_back = GoogleTranslator(source="en", target="ta").translate(eng)
+    return None
 
-        return {
-            "source": "AI Inference (மொழிபெயர்ப்பு)",
-            "meaning": ta_back,
-            "synonym": "தகவல் இல்லை",
-            "antonym": "தகவல் இல்லை",
-            "color": "#E65100"
-        }
-    except:
-        return None
-
-# ------------------ 5. OCR PROCESS ------------------
+# --------------------------------------------------
+# 5. OCR PROCESS
+# --------------------------------------------------
 def process_ocr(image):
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -115,11 +107,12 @@ def process_ocr(image):
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY, 11, 2
     )
-
-    config = r'--oem 3 --psm 6 -l tam+eng'
+    config = r'--oem 3 --psm 6 -l tam'
     return pytesseract.image_to_string(thresh, config=config)
 
-# ------------------ 6. UI ------------------
+# --------------------------------------------------
+# 6. UI
+# --------------------------------------------------
 st.markdown('<h1 class="main-title">நிகண்டு</h1>', unsafe_allow_html=True)
 st.markdown('<div class="title-divider"></div>', unsafe_allow_html=True)
 
@@ -129,8 +122,6 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("📜 ஆவண ஆய்வு (Text Extraction)")
     uploaded_file = st.file_uploader("PDF / Image தேர்வு செய்க", type=["pdf", "png", "jpg", "jpeg"])
-
-    extracted_text = ""
 
     if uploaded_file:
         with st.spinner("உரை பெறப்படுகிறது..."):
@@ -145,30 +136,34 @@ with col1:
 
         st.text_area("பிரித்தெடுக்கப்பட்ட உரை", extracted_text, height=350)
 
-# -------- RIGHT: WORD SEARCH --------
+# -------- RIGHT: SEARCH --------
 with col2:
-    st.subheader("🔍 சொற்பொருள் தேடல்")
+    st.subheader("🔍 சொற்பொருள் தேடல் (Exact Meaning)")
     word_query = st.text_input("ஒரு தமிழ் சொல்லை உள்ளிடவும்")
 
     if word_query:
-        res = get_word_info(word_query)
+        result = get_word_info(word_query)
 
-        if res:
+        if result:
             st.markdown(f"""
             <div class="result-card">
-                <p style="color:{res['color']}; font-size:0.9rem;"><b>{res['source']}</b></p>
+                <p style="color:#1B5E20; font-weight:bold;">
+                    {result['source']}
+                </p>
                 <h2 style="color:#800000;">{word_query}</h2>
                 <hr>
                 <p><span class="label">பொருள்:</span><br>
-                <span style="font-size:1.4rem;">{res['meaning']}</span></p>
-                <p><span class="label">இணையான சொல்:</span> {res['synonym']}</p>
-                <p><span class="label">எதிர்ச்சொல்:</span> {res['antonym']}</p>
+                <span style="font-size:1.5rem;">{result['meaning']}</span></p>
+                <p><span class="label">இணையான சொல்:</span> {result['synonym']}</p>
+                <p><span class="label">எதிர்ச்சொல்:</span> {result['antonym']}</p>
             </div>
             """, unsafe_allow_html=True)
         else:
-            st.error("பொருள் கிடைக்கவில்லை")
+            st.warning("இந்த சொல் தரவுத்தளத்தில் இல்லை")
 
-# ------------------ FOOTER ------------------
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
 st.markdown(
     "<br><p style='text-align:center; color:#800000; font-weight:bold;'>தமிழ் இனிது | ஆய்வகம் 2026</p>",
     unsafe_allow_html=True
