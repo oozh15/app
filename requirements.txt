@@ -15,6 +15,15 @@ numpy
 requests
 wikipedia-api
 streamlit
+streamlit
+requests
+beautifulsoup4
+pdfplumber
+Pillow
+pytesseract
+opencv-python-headless
+numpy
+gTTS
 pdfplumber
 Pillow
 pytesseract
