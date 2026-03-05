@@ -1,152 +1,129 @@
 import streamlit as st
 import pytesseract
 from PIL import Image
-import cv2
-import numpy as np
 import requests
-import wikipediaapi
+import re
+import tamil.utf8 as utf8
+import tamil.wordutils as wordutils
+from tamil_lemmatizer import TamilLemmatizer
 from gtts import gTTS
 import io
-import google.generativeai as genai
-from tamil_lemmatizer import TamilLemmatizer
 
-# --- INITIALIZATION ---
+# Initialize the Suffix/Stemming Engine
 lemmatizer = TamilLemmatizer()
-wiki_ta = wikipediaapi.Wikipedia(
-    user_agent="TamilLexiconApp/1.0",
-    language='ta'
-)
 
-# Configure Gemini AI (Ensure GEMINI_API_KEY is in Streamlit Secrets)
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    st.error("Please set GEMINI_API_KEY in Streamlit Secrets.")
+## --- 1. LINGUISTIC ENGINE (THE BRAIN) ---
 
-# --- 1. SEARCH FUNCTIONS (THE PIPELINE) ---
+def normalize_tamil_spelling(word):
+    """
+    Handles Variation Engine (Idea #4): Normalizes common spelling 
+    confusions (ர/ற, ல/ள) to attempt multiple searches.
+    """
+    variations = [word]
+    # Simple substitution rules for common spelling errors
+    rules = {'ரை': 'றை', 'றை': 'ரை', 'ல': 'ள', 'ள': 'ல', 'ன': 'ந'}
+    for mistake, fix in rules.items():
+        if mistake in word:
+            variations.append(word.replace(mistake, fix))
+    return list(set(variations))
 
-def search_wiktionary(word):
-    url = f"https://ta.wiktionary.org/api/rest_v1/page/definition/{word}"
-    try:
-        res = requests.get(url, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            return data['ta'][0]['definitions'][0]['definition'], "Wiktionary"
-    except:
-        return None, None
+def remove_common_suffixes(word):
+    """
+    Suffix Removal Engine (Idea #1 & #2): 
+    Strips common Tamil post-positions/suffixes.
+    """
+    suffixes = [
+        'உடன்', 'இல்லாமல்', 'கள்', 'இல்', 'யுடன்', 
+        'ஆல்', 'ஐ', 'கு', 'இருந்து', 'உடைய'
+    ]
+    stem = word
+    for s in suffixes:
+        if word.endswith(s):
+            stem = word.rsplit(s, 1)[0]
+            break
+    return stem
 
-def search_glosbe(word):
-    url = f"https://glosbe.com/gapi/translate?from=ta&dest=en&format=json&phrase={word}&pretty=true"
-    try:
-        res = requests.get(url, timeout=3).json()
-        if "tuc" in res and "phrase" in res["tuc"][0]:
-            return res["tuc"][0]["phrase"]["text"], "Glosbe Dictionary"
-    except:
-        return None, None
+## --- 2. MULTI-SOURCE ORCHESTRATOR ---
 
-def get_ai_data(word):
-    """Fallback for Definition, Context, and Synonyms"""
-    prompt = (f"Provide details for the Tamil word '{word}': "
-              "1. Simple Meaning, 2. A usage sentence, 3. Two synonyms. "
-              "Format: Meaning|Sentence|Synonyms")
-    try:
-        response = ai_model.generate_content(prompt).text
-        parts = response.split('|')
-        return {
-            "def": parts[0].strip() if len(parts) > 0 else "Not found",
-            "sentence": parts[1].strip() if len(parts) > 1 else "No example available",
-            "synonyms": parts[2].strip() if len(parts) > 2 else "None"
-        }
-    except:
-        return {"def": "Error fetching AI data", "sentence": "", "synonyms": ""}
-
-# --- 2. THE ORCHESTRATOR ---
-
-def master_search(raw_word):
-    # Step 1: Suffix Removal (Root word extraction)
-    root = lemmatizer.lemmatize(raw_word)
+def get_meaning_extreme(word):
+    """
+    Flow: Normalization -> Suffix Removal -> Multi-source Search
+    """
+    # Step A: Remove Suffixes
+    base_word = remove_common_suffixes(word)
+    # Step B: Get Root via Lemmatizer
+    root_word = lemmatizer.lemmatize(base_word)
     
-    # Step 2 & 3: Wiktionary & Wikipedia
-    meaning, source = search_wiktionary(root)
+    # Step C: Try all spelling variations
+    search_terms = normalize_tamil_spelling(root_word)
     
-    if not meaning:
-        page = wiki_ta.page(root)
-        if page.exists():
-            meaning, source = page.summary[:400] + "...", "Tamil Wikipedia"
-            
-    if not meaning:
-        meaning, source = search_glosbe(root)
-
-    # Step 4 & 5: Context & Synonyms (Always via AI for best quality)
-    ai_extra = get_ai_data(root)
-    
-    if not meaning:
-        meaning, source = ai_extra['def'], "AI Smart Search"
+    for term in search_terms:
+        # 1. Search Wiktionary
+        meaning, src = search_live_source(term, "wiktionary")
+        if meaning: return meaning, src, term
         
-    return {
-        "root": root,
-        "meaning": meaning,
-        "source": source,
-        "sentence": ai_extra['sentence'],
-        "synonyms": ai_extra['synonyms']
-    }
+        # 2. Search Glosbe
+        meaning, src = search_live_source(term, "glosbe")
+        if meaning: return meaning, src, term
 
-# --- 3. STREAMLIT UI ---
+    return None, None, root_word
 
-st.set_page_config(page_title="Tamil AI Lexicon", layout="wide")
-st.title("🏹 Smart Tamil AI Lexicon")
-st.markdown("---")
-
-# Layout Columns
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.header("📸 OCR Scanner")
-    uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
+def search_live_source(word, source_type):
+    if source_type == "wiktionary":
+        url = f"https://ta.wiktionary.org/api/rest_v1/page/definition/{word}"
+        try:
+            res = requests.get(url, timeout=2)
+            if res.status_code == 200:
+                data = res.json()
+                return data['ta'][0]['definitions'][0]['definition'], "Wiktionary"
+        except: pass
     
-    if uploaded_file:
-        img = Image.open(uploaded_file)
-        st.image(img, caption="Input Image", use_container_width=True)
+    elif source_type == "glosbe":
+        url = f"https://glosbe.com/gapi/translate?from=ta&dest=en&format=json&phrase={word}"
+        try:
+            res = requests.get(url, timeout=2).json()
+            if "tuc" in res and "phrase" in res["tuc"][0]:
+                return res["tuc"][0]["phrase"]["text"], "Glosbe"
+        except: pass
+    
+    return None, None
+
+## --- 3. UI INTERFACE ---
+
+st.set_page_config(page_title="Extreme Tamil Lexicon", layout="centered")
+st.title("🔥 Extreme Tamil Linguistic Engine")
+st.write("Professional Stemming | Suffix Removal | Multi-Source Search")
+
+word_input = st.text_input("Enter Tamil word (e.g., அக்கறையுடன்):")
+
+
+
+if word_input:
+    with st.spinner("Processing Linguistic Pipeline..."):
+        # Run the Engine
+        meaning, source, final_root = get_meaning_extreme(word_input)
         
-        if st.button("Extract Text"):
-            with st.spinner("Processing OCR..."):
-                # Basic Preprocessing for Tesseract
-                open_cv_image = np.array(img)
-                gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
-                text = pytesseract.image_to_string(gray, lang='tam')
-                st.session_state['extracted_text'] = text
-
-    if 'extracted_text' in st.session_state:
-        st.text_area("Extracted Text:", st.session_state['extracted_text'], height=150)
-        st.info("Click a word above to search or type below.")
-
-with col2:
-    st.header("📖 Smart Dictionary")
-    search_query = st.text_input("Enter Tamil word to search:")
-    
-    if search_query:
-        with st.spinner(f"Analyzing {search_query}..."):
-            result = master_search(search_query)
+        if meaning:
+            st.success(f"**Found Meaning for Root: {final_root}**")
             
-            # 1. Voice Output
-            tts = gTTS(text=search_query, lang='ta')
-            audio_fp = io.BytesIO()
-            tts.write_to_fp(audio_fp)
-            st.audio(audio_fp, format='audio/mp3')
+            # Layout for output
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"**Definition:** {meaning}")
+                st.caption(f"Source: {source}")
+            with col2:
+                # Pronunciation
+                tts = gTTS(text=final_root, lang='ta')
+                fp = io.BytesIO()
+                tts.write_to_fp(fp)
+                st.audio(fp, format='audio/mp3')
             
-            # 2. Results Cards
-            st.success(f"**Root Word:** {result['root']}")
+            # Idea #9: Sandhi/Character Pattern Matching
+            st.divider()
+            st.subheader("Analysis")
+            st.write(f"Original Word: `{word_input}`")
+            st.write(f"Detected Suffixes removed. Stemmed to: `{final_root}`")
             
-            with st.expander("📝 Definition & Source", expanded=True):
-                st.write(result['meaning'])
-                st.caption(f"Source: {result['source']}")
-                
-            with st.expander("💡 Usage Context"):
-                st.write(f"*{result['sentence']}*")
-                
-            with st.expander("🔗 Synonyms"):
-                st.code(result['synonyms'])
-
-st.markdown("---")
-st.caption("B.Tech IT Final Year Project - Built with Python & Gemini AI")
+        else:
+            st.error(f"Could not find exact meaning for '{word_input}' or its root '{final_root}'.")
+            st.info("Try checking the spelling or searching for a simpler form of the word.")
