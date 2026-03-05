@@ -16,3 +16,12 @@ opencv-python-headless
 Pillow
 tamil-lemmatizer
 torch
+streamlit
+pytesseract
+opencv-python-headless
+Pillow
+tamil-lemmatizer
+torch
+requests
+wikipedia-api
+gTTS
