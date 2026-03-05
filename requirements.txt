@@ -2,9 +2,9 @@ streamlit
 pytesseract
 opencv-python-headless
 Pillow
+open-tamil
 tamil-lemmatizer
 torch
 requests
 wikipedia-api
 gTTS
-google-generativeai
