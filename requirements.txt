@@ -10,3 +10,9 @@ gTTS
 tamil-lemmatizer
 torch
 beautifulsoup4
+streamlit
+pytesseract
+opencv-python-headless
+Pillow
+tamil-lemmatizer
+torch
