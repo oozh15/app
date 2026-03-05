@@ -23,3 +23,12 @@ numpy
 requests
 wikipedia-api
 gTTS
+streamlit
+requests
+wikipedia-api
+pdfplumber
+Pillow
+pytesseract
+opencv-python-headless
+numpy
+gTTS
