@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import requests
 import wikipediaapi
+from gtts import gTTS
+import io
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -13,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- THEME ----------------
+# ---------------- THEME & CSS ----------------
 def apply_theme():
     bg = "https://www.transparenttextures.com/patterns/papyrus.png"
     st.markdown(f"""
@@ -30,29 +32,90 @@ def apply_theme():
         text-align: center;
         color: #800000;
         font-size: 3.2rem;
+        margin-bottom: 0;
     }}
     .card {{
         background: #fff;
-        padding: 18px;
-        border-left: 8px solid #800000;
-        box-shadow: 4px 4px 12px rgba(0,0,0,0.1);
-        border-radius: 6px;
+        padding: 20px;
+        border-left: 10px solid #800000;
+        box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
+        border-radius: 8px;
         margin-bottom: 20px;
     }}
     .label {{
         font-weight: bold;
         color: #1B5E20;
     }}
-    .suggestion-box {{
-        background-color: #FFF3E0;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px dashed #E65100;
-    }}
     </style>
     """, unsafe_allow_html=True)
 
 apply_theme()
+
+# ---------------- API 1: WIKTIONARY ----------------
+def search_wiktionary(word):
+    url = "https://ta.wiktionary.org/w/api.php"
+    params = {
+        "action": "query", "format": "json", "titles": word,
+        "prop": "extracts", "explaintext": True, "exintro": True
+    }
+    try:
+        res = requests.get(url, params=params, timeout=5).json()
+        pages = res.get("query", {}).get("pages", {})
+        for pid, val in pages.items():
+            if pid != "-1" and val.get("extract"):
+                return val["extract"], "Wiktionary"
+    except: pass
+    return None, None
+
+# ---------------- API 2: GLOSBE (FALLBACK) ----------------
+def search_glosbe(word):
+    # Using Glosbe to find meanings/translations
+    url = f"https://glosbe.com/gapi/translate?from=ta&dest=en&format=json&phrase={word}&pretty=true"
+    try:
+        res = requests.get(url, timeout=5).json()
+        if "tuc" in res:
+            meanings = []
+            for item in res["tuc"]:
+                if "phrase" in item:
+                    meanings.append(item["phrase"]["text"])
+            if meanings:
+                return " / ".join(meanings[:3]), "Glosbe Dictionary"
+    except: pass
+    return None, None
+
+# ---------------- API 3: WIKIPEDIA (CONCEPT SEARCH) ----------------
+wiki_ta = wikipediaapi.Wikipedia(user_agent="TamilLexicon/1.0", language="ta")
+
+def search_wikipedia(word):
+    page = wiki_ta.page(word)
+    if page.exists():
+        return page.summary[:600] + "...", "Tamil Wikipedia"
+    return None, None
+
+# ---------------- VOICE PRONUNCIATION (TTS) ----------------
+def play_voice(word):
+    tts = gTTS(text=word, lang='ta')
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp
+
+# ---------------- MAIN SEARCH LOGIC ----------------
+def get_meaning(word):
+    word = word.strip()
+    
+    # 1. Try Wiktionary
+    meaning, src = search_wiktionary(word)
+    if meaning: return meaning, src
+    
+    # 2. Try Glosbe
+    meaning, src = search_glosbe(word)
+    if meaning: return meaning, src
+    
+    # 3. Try Wikipedia
+    meaning, src = search_wikipedia(word)
+    if meaning: return meaning, src
+    
+    return None, None
 
 # ---------------- OCR ENGINE ----------------
 def process_ocr(image):
@@ -61,79 +124,28 @@ def process_ocr(image):
     config = r"--oem 3 --psm 6 -l tam+eng"
     return pytesseract.image_to_string(gray, config=config)
 
-# ---------------- ROOT NORMALIZATION ----------------
-def normalize_word(word):
-    suffixes = ["இல்", "இன்", "ஆல்", "உடன்", "க்கு", "கள்", "து", "தை", "ன்", "யை", "இய", "ஆ"]
-    for suf in suffixes:
-        if word.endswith(suf) and len(word) > len(suf) + 1:
-            return word[:-len(suf)]
-    return word
-
-# ---------------- API SEARCH FUNCTIONS ----------------
-
-def search_wiktionary(word):
-    """Real-time Dictionary Search via Wiktionary API"""
-    URL = "https://ta.wiktionary.org/w/api.php"
-    params = {
-        "action": "query", "format": "json", "titles": word,
-        "prop": "extracts", "explaintext": True, "exintro": True
-    }
-    try:
-        res = requests.get(URL, params=params, timeout=5).json()
-        pages = res.get("query", {}).get("pages", {})
-        for pid, val in pages.items():
-            if pid != "-1" and val.get("extract"):
-                return val["extract"], "Live Wiktionary"
-    except: pass
-    return None, None
-
-def get_suggestions(word):
-    """Search for similar words if direct meaning is not found"""
-    URL = "https://ta.wikipedia.org/w/api.php"
-    params = {
-        "action": "opensearch", "format": "json", "search": word, "limit": 5
-    }
-    try:
-        res = requests.get(URL, params=params, timeout=5).json()
-        return res[1] # Returns list of similar titles
-    except: return []
-
-# ---------------- MAIN LOGIC ----------------
-def get_meaning(word):
-    word = word.strip()
-    root = normalize_word(word)
-
-    # 1. Exact Wiktionary Match
-    meaning, src = search_wiktionary(word)
-    if meaning: return meaning, src
-
-    # 2. Root Word Wiktionary Match
-    if root != word:
-        meaning, src = search_wiktionary(root)
-        if meaning: return meaning, f"Wiktionary (Root: {root})"
-
-    return None, None
-
 # ---------------- UI LAYOUT ----------------
 st.markdown("<h1 class='title'>நிகண்டு</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>Digital Tamil Lexicon & OCR Explorer</p>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
     st.subheader("📜 ஆவண ஆய்வு (OCR)")
-    file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
+    file = st.file_uploader("Upload Image or PDF", type=["pdf", "png", "jpg", "jpeg"])
     if file:
-        with st.spinner("எழுத்துக்களைப் பிரித்தெடுக்கிறது..."):
+        with st.spinner("Processing..."):
             if file.type == "application/pdf":
                 with pdfplumber.open(file) as pdf:
                     text = "\n".join(process_ocr(p.to_image(resolution=200).original) for p in pdf.pages)
             else:
                 text = process_ocr(Image.open(file))
-        st.text_area("கண்டறியப்பட்ட உரை:", text, height=250)
+        st.text_area("Extracted Text:", text, height=300)
+        st.info("Tip: Copy a word from here and paste it in the search box!")
 
 with col2:
     st.subheader("🔍 சொற்பொருள் தேடல்")
-    query = st.text_input("ஒரு தமிழ் சொல்லை உள்ளிடவும்", placeholder="எ.கா: அறம், கணினி")
+    query = st.text_input("Enter a Tamil word:", placeholder="e.g., அக்கறை, அறம்")
 
     if query:
         meaning, source = get_meaning(query)
@@ -141,24 +153,29 @@ with col2:
         if meaning:
             st.markdown(f"""
             <div class="card">
-                <p style="font-size:0.8rem; color:grey;">ஆதாரம்: {source}</p>
-                <h2 style="color:#800000; margin-top:0;">{query}</h2>
+                <p style="font-size:0.8rem; color:grey;">Source: {source}</p>
+                <h2 style="color:#800000; margin:0;">{query}</h2>
                 <hr>
-                <p><span class="label">பொருள்:</span><br>{meaning}</p>
+                <p><span class="label">பொருள் (Meaning):</span><br>{meaning}</p>
             </div>
             """, unsafe_allow_html=True)
-        else:
-            st.error("இந்த சொல்லிற்கான நேரடிப் பொருள் கிடைக்கவில்லை.")
             
-            # Suggestion Logic
-            suggestions = get_suggestions(query)
+            # Voice Button
+            st.write("🔊 **Hear Pronunciation:**")
+            audio_fp = play_voice(query)
+            st.audio(audio_fp, format='audio/mp3')
+            
+        else:
+            st.error("No direct meaning found. Trying similar suggestions...")
+            # Fallback to simple Wikipedia search suggestions
+            URL = "https://ta.wikipedia.org/w/api.php"
+            params = {"action": "opensearch", "format": "json", "search": query, "limit": 3}
+            suggestions = requests.get(URL, params=params).json()[1]
             if suggestions:
-                st.info("நீங்கள் இவற்றைத் தேடுகிறீர்களா?")
-                cols = st.columns(len(suggestions))
-                for i, sug in enumerate(suggestions):
-                    if cols[i].button(sug):
-                        # Re-run search with the suggested word
-                        st.session_state.query = sug
+                st.write("Did you mean?")
+                for s in suggestions:
+                    if st.button(s):
+                        st.session_state.query = s
                         st.rerun()
 
 st.markdown("---")
