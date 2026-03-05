@@ -17,6 +17,15 @@ wikipedia-api
 streamlit
 streamlit
 requests
+pdfplumber
+Pillow
+pytesseract
+opencv-python-headless
+numpy
+gTTS
+tamil-lemmatizer
+streamlit
+requests
 beautifulsoup4
 pdfplumber
 Pillow
