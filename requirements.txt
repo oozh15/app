@@ -1,27 +1,20 @@
+# Core Web Framework
 streamlit
-pdfplumber
-Pillow
+
+# OCR & Image Processing
 pytesseract
+Pillow
 opencv-python-headless
-numpy
+
+# Tamil NLP & Suffix Removal
+open-tamil
+tamil-lemmatizer
+torch
+
+# API & Literature Search
 requests
 wikipedia-api
+
+# Voice & AI Features
 gTTS
-tamil-lemmatizer
-torch
-beautifulsoup4
-streamlit
-pytesseract
-opencv-python-headless
-Pillow
-tamil-lemmatizer
-torch
-streamlit
-pytesseract
-opencv-python-headless
-Pillow
-tamil-lemmatizer
-torch
-requests
-wikipedia-api
-gTTS
+google-generativeai
