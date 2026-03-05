@@ -1,9 +1,4 @@
 tesseract-ocr
 tesseract-ocr-tam
 libtesseract-dev
-tesseract-ocr
-tesseract-ocr-tam
-libtesseract-dev
-tesseract-ocr
-tesseract-ocr-tam
 libgl1-mesa-glx
