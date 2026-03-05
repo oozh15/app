@@ -14,3 +14,12 @@ opencv-python-headless
 numpy
 requests
 wikipedia-api
+streamlit
+pdfplumber
+Pillow
+pytesseract
+opencv-python-headless
+numpy
+requests
+wikipedia-api
+gTTS
