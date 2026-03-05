@@ -1,110 +1,122 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 import pdfplumber
 from PIL import Image
 import pytesseract
 import cv2
 import numpy as np
+from tamil_lemmatizer import TamilLemmatizer
 from gtts import gTTS
 import io
 
+# Initialize Lemmatizer for root word extraction
+lemmatizer = TamilLemmatizer()
+
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="நிகண்டு | Multi-Dict AI", layout="wide")
+st.set_page_config(page_title="நிகண்டு | Digital Tamil Lexicon", layout="wide")
 
 # ---------------- THEME ----------------
 st.markdown("""
 <style>
-    .stApp { background-color: #FDF5E6; font-family: 'Segoe UI', sans-serif; }
-    .title { text-align: center; color: #800000; font-size: 2.5rem; font-weight: bold; }
-    .meaning-card { background: white; padding: 15px; border-radius: 10px; border-left: 5px solid #800000; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
-    .source-tag { font-size: 0.7rem; color: #7f8c8d; font-weight: bold; text-transform: uppercase; }
+    @import url('https://fonts.googleapis.com/css2?family=Pavanam&display=swap');
+    .stApp { background-color: #FDF5E6; font-family: 'Pavanam', sans-serif; }
+    .title { text-align: center; color: #800000; font-size: 2.8rem; font-weight: bold; }
+    .card { background: white; padding: 15px; border-left: 8px solid #800000; border-radius: 5px; box-shadow: 2px 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    .source-label { font-size: 0.7rem; color: #7f8c8d; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- 10 DICTIONARY ROUTE LOGIC ----------------
+# ---------------- API SEARCH LOGIC ----------------
 
-def fetch_meanings(word):
+def search_tamil_dict(word):
+    """Fetches Tamil definitions from multiple live sources."""
     meanings = []
     
-    # 1. Wiktionary API (Tamil)
+    # Pre-processing: Get the root word (Lemma)
     try:
-        r = requests.get(f"https://ta.wiktionary.org/w/api.php?action=query&format=json&titles={word}&prop=extracts&explaintext=True&exintro=True", timeout=2).json()
-        pages = r.get("query", {}).get("pages", {})
+        root = lemmatizer.lemmatize(word)
+    except:
+        root = word
+
+    # 1. Tamil Wiktionary (Official Definition)
+    wiki_url = "https://ta.wiktionary.org/w/api.php"
+    params = {
+        "action": "query", "format": "json", "titles": root,
+        "prop": "extracts", "explaintext": True, "exintro": True
+    }
+    try:
+        res = requests.get(wiki_url, params=params, timeout=3).json()
+        pages = res.get("query", {}).get("pages", {})
         for pid, val in pages.items():
-            if pid != "-1": meanings.append({"text": val["extract"].split('.')[0], "src": "Wiktionary TA"})
+            if pid != "-1" and val.get("extract"):
+                # Take only the first sentence for clarity
+                clean_text = val["extract"].split('\n')[0].split('.')[0]
+                meanings.append({"text": clean_text + ".", "src": "விக்சனரி (Wiktionary)"})
     except: pass
 
-    # 2. Glosbe API (Tamil-English-Tamil Synonyms)
+    # 2. Glosbe Tamil-Tamil (Synonyms)
+    glosbe_url = f"https://glosbe.com/gapi/translate?from=ta&dest=ta&format=json&phrase={root}"
     try:
-        r = requests.get(f"https://glosbe.com/gapi/translate?from=ta&dest=en&format=json&phrase={word}", timeout=2).json()
-        if "tuc" in r:
-            for item in r["tuc"][:3]:
-                if "phrase" in item: meanings.append({"text": item["phrase"]["text"], "src": "Glosbe"})
+        res = requests.get(glosbe_url, timeout=3).json()
+        if "tuc" in res:
+            syns = [item["phrase"]["text"] for item in res["tuc"] if "phrase" in item]
+            if syns:
+                meanings.append({"text": ", ".join(syns[:5]), "src": "பொருள் விளக்கம் (Synonyms)"})
     except: pass
 
-    # 3. Datamuse API (Related Tamil Terms)
-    try:
-        r = requests.get(f"https://api.datamuse.com/words?ml={word}&max=2", timeout=2).json()
-        for item in r: meanings.append({"text": item["word"], "src": "Datamuse"})
-    except: pass
+    return meanings[:5], root
 
-    # 4. MyMemory Translation API (Contextual Meaning)
-    try:
-        r = requests.get(f"https://api.mymemory.translated.net/get?q={word}&langpair=ta|en", timeout=2).json()
-        meanings.append({"text": r["responseData"]["translatedText"], "src": "MyMemory"})
-    except: pass
+# ---------------- OCR ENGINE ----------------
 
-    # 5. Wiktionary API (English - for Tamil loan words)
-    try:
-        r = requests.get(f"https://en.wiktionary.org/w/api.php?action=query&format=json&titles={word}&prop=extracts&explaintext=True", timeout=2).json()
-        pages = r.get("query", {}).get("pages", {})
-        for pid, val in pages.items():
-            if pid != "-1": meanings.append({"text": val["extract"].split('\n')[0][:100], "src": "Wiktionary EN"})
-    except: pass
-
-    # 6-10. Note: Adding web-scrapers for University sites often requires complex headers.
-    # We will use Google's search hint as a fallback 
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(f"https://www.google.com/search?q={word}+meaning+in+tamil", headers=headers, timeout=2)
-        if r.status_code == 200:
-            meanings.append({"text": "Search successful, check details below.", "src": "Google Knowledge Path"})
-    except: pass
-
-    return meanings[:5] # STRICTLY TOP 5
+def process_ocr(image):
+    img = np.array(image)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    config = r"--oem 3 --psm 6 -l tam+eng"
+    return pytesseract.image_to_string(gray, config=config)
 
 # ---------------- UI LAYOUT ----------------
 
-st.markdown("<h1 class='title'>நிகண்டு | Super-Dict 2026</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='title'>நிகண்டு</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>தமிழ் வேர்ச்சொல் மற்றும் சொற்பொருள் ஆய்வகம்</p>", unsafe_allow_html=True)
 
-q = st.text_input("Enter Tamil word:", placeholder="e.g. அறிவு")
+col1, col2 = st.columns([1, 1.2])
 
-if q:
-    results = fetch_meanings(q)
-    
-    if results:
-        st.subheader(f"Top {len(results)} Meanings for '{q}':")
-        for res in results:
-            st.markdown(f"""
-            <div class="meaning-card">
-                <span class="source-tag">Source: {res['src']}</span>
-                <p style="margin: 5px 0; font-size: 1.1rem;">{res['text']}</p>
-            </div>
-            """, unsafe_allow_html=True)
+with col1:
+    st.subheader("📜 ஆவண ஆய்வு (OCR)")
+    file = st.file_uploader("Image/PDF பதிவேற்றவும்", type=["pdf", "png", "jpg", "jpeg"])
+    if file:
+        with st.spinner("உரையைப் பிரித்தெடுக்கிறது..."):
+            if file.type == "application/pdf":
+                with pdfplumber.open(file) as pdf:
+                    text = "\n".join(process_ocr(p.to_image(resolution=200).original) for p in pdf.pages)
+            else:
+                text = process_ocr(Image.open(file))
+        st.text_area("கண்டறியப்பட்ட உரை:", text, height=300)
+
+with col2:
+    st.subheader("🔍 சொற்பொருள் தேடல்")
+    query = st.text_input("ஒரு தமிழ் சொல்லை உள்ளிடவும்:", placeholder="எ.கா: அக்கறை")
+
+    if query:
+        results, root = search_tamil_dict(query)
         
-        # Audio
-        tts = gTTS(text=q, lang='ta')
-        audio_io = io.BytesIO()
-        tts.write_to_fp(audio_io)
-        st.audio(audio_io, format='audio/mp3')
-    else:
-        st.error("No short meanings found. Try a simpler word.")
+        if results:
+            st.write(f"**தேடப்பட்ட சொல்:** {query} | **வேர்ச்சொல்:** {root}")
+            for r in results:
+                st.markdown(f"""
+                <div class="card">
+                    <span class="source-label">ஆதாரம்: {r['src']}</span>
+                    <p style="font-size:1.1rem; color:#3E2723; margin-top:5px;">{r['text']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Text-to-Speech
+            tts = gTTS(text=query, lang='ta')
+            audio_io = io.BytesIO()
+            tts.write_to_fp(audio_io)
+            st.audio(audio_io, format='audio/mp3')
+        else:
+            st.error("மன்னிக்கவும்! இந்த சொல்லிற்கான பொருள் நேரடி அகராதிகளில் கிடைக்கவில்லை.")
 
 st.markdown("---")
-# OCR SECTION
-st.subheader("📜 OCR Scanner")
-file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
-if file:
-    # (OCR logic remains the same as previous versions)
-    st.write("Scan complete. Use the words above to search!")
+st.markdown("<p style='text-align:center; color:#800000; font-weight:bold;'>தமிழ் இனிது | ஆய்வகம் 2026</p>", unsafe_allow_html=True)
