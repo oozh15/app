@@ -37,21 +37,27 @@ def apply_theme():
         border-left: 8px solid #800000;
         box-shadow: 4px 4px 12px rgba(0,0,0,0.1);
         border-radius: 6px;
+        margin-bottom: 20px;
     }}
     .label {{
         font-weight: bold;
         color: #1B5E20;
+    }}
+    .suggestion-box {{
+        background-color: #FFF3E0;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px dashed #E65100;
     }}
     </style>
     """, unsafe_allow_html=True)
 
 apply_theme()
 
-# ---------------- OCR ----------------
+# ---------------- OCR ENGINE ----------------
 def process_ocr(image):
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Ensure Tesseract has Tamil data installed
     config = r"--oem 3 --psm 6 -l tam+eng"
     return pytesseract.image_to_string(gray, config=config)
 
@@ -63,103 +69,97 @@ def normalize_word(word):
             return word[:-len(suf)]
     return word
 
-# ---------------- WIKTIONARY API (New Live Search) ----------------
+# ---------------- API SEARCH FUNCTIONS ----------------
+
 def search_wiktionary(word):
-    """Fetches definitions from Tamil Wiktionary API"""
-    WIKTIONARY_URL = "https://ta.wiktionary.org/w/api.php"
+    """Real-time Dictionary Search via Wiktionary API"""
+    URL = "https://ta.wiktionary.org/w/api.php"
     params = {
-        "action": "query",
-        "format": "json",
-        "titles": word,
-        "prop": "extracts",
-        "explaintext": True,
-        "exintro": True
+        "action": "query", "format": "json", "titles": word,
+        "prop": "extracts", "explaintext": True, "exintro": True
     }
     try:
-        response = requests.get(WIKTIONARY_URL, params=params, timeout=5)
-        data = response.json()
-        pages = data.get("query", {}).get("pages", {})
-        for page_id, content in pages.items():
-            if page_id != "-1":
-                extract = content.get("extract", "")
-                if extract:
-                    # Return first few descriptive lines
-                    return "\n".join(extract.split("\n")[:5]), "Live Wiktionary"
-    except:
-        pass
+        res = requests.get(URL, params=params, timeout=5).json()
+        pages = res.get("query", {}).get("pages", {})
+        for pid, val in pages.items():
+            if pid != "-1" and val.get("extract"):
+                return val["extract"], "Live Wiktionary"
+    except: pass
     return None, None
 
-# ---------------- WIKIPEDIA (Fallback) ----------------
-wiki_ta = wikipediaapi.Wikipedia(
-    user_agent="NiganduLexicon/1.0",
-    language="ta",
-    extract_format=wikipediaapi.ExtractFormat.WIKI
-)
+def get_suggestions(word):
+    """Search for similar words if direct meaning is not found"""
+    URL = "https://ta.wikipedia.org/w/api.php"
+    params = {
+        "action": "opensearch", "format": "json", "search": word, "limit": 5
+    }
+    try:
+        res = requests.get(URL, params=params, timeout=5).json()
+        return res[1] # Returns list of similar titles
+    except: return []
 
-def search_wikipedia(word):
-    page = wiki_ta.page(word)
-    if page.exists():
-        return page.summary[:800], "Tamil Wikipedia"
-    return None, None
-
-# ---------------- MAIN SEARCH LOGIC ----------------
+# ---------------- MAIN LOGIC ----------------
 def get_meaning(word):
     word = word.strip()
     root = normalize_word(word)
 
-    # 1) Try Wiktionary (Direct)
-    meaning, source = search_wiktionary(word)
-    if meaning: return meaning, source
+    # 1. Exact Wiktionary Match
+    meaning, src = search_wiktionary(word)
+    if meaning: return meaning, src
 
-    # 2) Try Wiktionary (Root)
+    # 2. Root Word Wiktionary Match
     if root != word:
-        meaning, source = search_wiktionary(root)
+        meaning, src = search_wiktionary(root)
         if meaning: return meaning, f"Wiktionary (Root: {root})"
-
-    # 3) Fallback to Wikipedia
-    meaning, source = search_wikipedia(word)
-    if meaning: return meaning, source
 
     return None, None
 
 # ---------------- UI LAYOUT ----------------
 st.markdown("<h1 class='title'>நிகண்டு</h1>", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
     st.subheader("📜 ஆவண ஆய்வு (OCR)")
-    file = st.file_uploader("PDF / Image", type=["pdf", "png", "jpg", "jpeg"])
+    file = st.file_uploader("Upload Image/PDF", type=["pdf", "png", "jpg", "jpeg"])
     if file:
-        if file.type == "application/pdf":
-            with pdfplumber.open(file) as pdf:
-                text = "\n".join(
-                    process_ocr(p.to_image(resolution=300).original)
-                    for p in pdf.pages
-                )
-        else:
-            text = process_ocr(Image.open(file))
-        st.text_area("பிரித்தெடுக்கப்பட்ட உரை", text, height=300)
+        with st.spinner("எழுத்துக்களைப் பிரித்தெடுக்கிறது..."):
+            if file.type == "application/pdf":
+                with pdfplumber.open(file) as pdf:
+                    text = "\n".join(process_ocr(p.to_image(resolution=200).original) for p in pdf.pages)
+            else:
+                text = process_ocr(Image.open(file))
+        st.text_area("கண்டறியப்பட்ட உரை:", text, height=250)
 
 with col2:
     st.subheader("🔍 சொற்பொருள் தேடல்")
-    query = st.text_input("ஒரு தமிழ் சொல்லை உள்ளிடவும்")
+    query = st.text_input("ஒரு தமிழ் சொல்லை உள்ளிடவும்", placeholder="எ.கா: அறம், கணினி")
 
     if query:
         meaning, source = get_meaning(query)
+        
         if meaning:
             st.markdown(f"""
             <div class="card">
-                <p style="font-size:0.85rem;color:#555;">ஆதாரம்: {source}</p>
-                <h2 style="color:#800000">{query}</h2>
+                <p style="font-size:0.8rem; color:grey;">ஆதாரம்: {source}</p>
+                <h2 style="color:#800000; margin-top:0;">{query}</h2>
                 <hr>
                 <p><span class="label">பொருள்:</span><br>{meaning}</p>
             </div>
             """, unsafe_allow_html=True)
         else:
-            st.warning("இந்த சொல்லிற்கான பொருள் கிடைக்கவில்லை. தயவுசெய்து வேறு சொல்லை முயற்சிக்கவும்.")
+            st.error("இந்த சொல்லிற்கான நேரடிப் பொருள் கிடைக்கவில்லை.")
+            
+            # Suggestion Logic
+            suggestions = get_suggestions(query)
+            if suggestions:
+                st.info("நீங்கள் இவற்றைத் தேடுகிறீர்களா?")
+                cols = st.columns(len(suggestions))
+                for i, sug in enumerate(suggestions):
+                    if cols[i].button(sug):
+                        # Re-run search with the suggested word
+                        st.session_state.query = sug
+                        st.rerun()
 
-st.markdown(
-    "<p style='text-align:center;color:#800000;font-weight:bold;margin-top:50px;'>தமிழ் இனிது | ஆய்வகம் 2026</p>",
-    unsafe_allow_html=True
-)
+st.markdown("---")
+st.markdown("<p style='text-align:center; font-weight:bold; color:#800000;'>தமிழ் இனிது | ஆய்வகம் 2026</p>", unsafe_allow_html=True)
