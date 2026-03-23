@@ -1,102 +1,177 @@
 """
-Tamil Government Document Reader — v5 FINAL
+Tamil Government Document Reader — v6 FINAL
 ════════════════════════════════════════════
-New in this version:
-  1. AI-powered rich explanation (Claude API) — gives Tamil meaning,
-     English meaning, document context, and example sentence for every word
-  2. Improved OCR — denoise, deskew, contrast boost before Tesseract
-  3. Better text formatting — paragraphs cleaned, Tamil/English separated
-  4. Fast 3-source fallback (MyMemory → Wiktionary → Google Translate)
-     when Claude API not configured
-  5. "Context lookup" — finds the sentence in the document containing
-     the word and explains it in context
+What this version delivers:
+  1. TAMIL → TAMIL meaning  (simple Tamil, not English)
+  2. Example sentence using the word in Tamil
+  3. Document context — what the word means IN THIS specific document type
+     (பட்டா / G.O. / certificate / legal — auto-detected)
+  4. Improved OCR: contrast boost + sharpen + upscale before Tesseract
+  5. Better text cleanup: proper paragraph formatting, Tamil font
+  6. Fast fallback (MyMemory) when no API key configured
+
+Setup: Add  ANTHROPIC_API_KEY = "sk-ant-..."  in Streamlit Cloud Secrets
 """
 
-import io, re, os, base64, json
-import requests, streamlit as st
+import io, re, os, json, requests
+import streamlit as st
 from gtts import gTTS
-from PIL import Image, ImageFilter, ImageOps, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance
 import pdfplumber, pytesseract
 import numpy as np
 
-# ── page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Tamil Govt Document Reader", page_icon="📜", layout="wide")
+# ── Page config ───────────────────────────────────────────────────────────────
+st.set_page_config(page_title="தமிழ் ஆவண வாசகன்", page_icon="📜", layout="wide")
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
-.stApp{background:#f4f1ec;}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
-.hdr{background:#0f172a;border-left:5px solid #d4a843;border-radius:12px;
-     padding:1.5rem 2rem;margin-bottom:1.3rem;}
-.hdr h1{color:#f8ecd4;font-size:1.65rem;font-weight:600;margin:0 0 .2rem;}
-.hdr p {color:#a89880;font-size:.88rem;margin:0;}
+html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
+.stApp { background: #f2ede6; }
+
+/* Header */
+.hdr {
+  background: #0f172a; border-left: 5px solid #d4a843;
+  border-radius: 14px; padding: 1.5rem 2rem; margin-bottom: 1.3rem;
+}
+.hdr h1 { color: #f8ecd4; font-size: 1.6rem; font-weight: 600; margin: 0 0 .2rem; }
+.hdr p  { color: #a89880; font-size: .87rem; margin: 0; }
 
 /* Document text box */
-.docbox{
-  background:#fffef9;border:1px solid #ddd0b8;border-radius:10px;
-  padding:1.4rem 1.8rem;
-  font-family:'Noto Sans Tamil','IBM Plex Sans',sans-serif;
-  font-size:1.08rem;line-height:2.4;color:#1a1a1a;
-  white-space:pre-wrap;word-break:break-word;
-  max-height:500px;overflow-y:auto;
+.docbox {
+  background: #fffef8;
+  border: 1px solid #ddd0b8;
+  border-radius: 12px;
+  padding: 1.5rem 1.9rem;
+  font-family: 'Noto Sans Tamil', 'IBM Plex Sans', sans-serif;
+  font-size: 1.1rem;
+  line-height: 2.5;
+  color: #111;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 520px;
+  overflow-y: auto;
+  letter-spacing: 0.01em;
 }
 
 /* Meaning card */
-.mcard{background:#fff;border-radius:12px;border:1px solid #e2d8c8;
-  box-shadow:0 3px 14px rgba(0,0,0,.05);padding:1.3rem 1.5rem;margin-top:.3rem;}
-.mword{font-family:'Noto Sans Tamil',sans-serif;font-size:1.5rem;
-       font-weight:600;color:#0f172a;margin-bottom:.1rem;}
-.mroot{font-size:.76rem;color:#aaa;margin-bottom:.9rem;}
-
-/* Section labels inside card */
-.sec-label{
-  font-size:.68rem;font-weight:700;text-transform:uppercase;
-  letter-spacing:.1em;color:#c9963a;margin:.75rem 0 .2rem;
+.mcard {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e2d8c8;
+  box-shadow: 0 4px 18px rgba(0,0,0,.06);
+  padding: 1.3rem 1.5rem;
+  margin-top: .2rem;
 }
-.sec-body{
-  font-family:'Noto Sans Tamil','IBM Plex Sans',sans-serif;
-  font-size:.97rem;color:#2d2d2d;line-height:1.85;
-  background:#fafaf7;border-radius:8px;padding:.6rem .85rem;
-  border-left:3px solid #d4a843;
+.mword {
+  font-family: 'Noto Sans Tamil', sans-serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: .05rem;
 }
-.ctx-box{
-  font-family:'Noto Sans Tamil','IBM Plex Sans',sans-serif;
-  font-size:.9rem;color:#555;line-height:1.8;
-  background:#f0f4ff;border-radius:8px;padding:.6rem .85rem;
-  border-left:3px solid #4a7ddb;margin-top:.2rem;
-  font-style:italic;
+.mroot { font-size: .74rem; color: #bbb; margin-bottom: 1rem; }
+
+/* Section inside card */
+.sec {
+  margin-bottom: .9rem;
+  border-radius: 9px;
+  overflow: hidden;
 }
-.badge{display:inline-block;font-size:11px;font-weight:600;
-  padding:2px 9px;border-radius:20px;margin:0 5px 3px 0;vertical-align:middle;}
-.b-ai {background:#eae8ff;color:#4f46e5;}
-.b-wt {background:#e8f4fd;color:#1155aa;}
-.b-mm {background:#d6f5e3;color:#155e2b;}
-.b-gt {background:#fff0d6;color:#7a4500;}
+.sec-head {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  padding: .3rem .75rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sec-body {
+  font-family: 'Noto Sans Tamil', 'IBM Plex Sans', sans-serif;
+  font-size: 1rem;
+  line-height: 1.9;
+  padding: .6rem .85rem;
+}
 
-.notfound{font-size:.92rem;color:#b91c1c;background:#fef2f2;
-  border:1px solid #fecaca;border-radius:8px;padding:.65rem .9rem;margin-top:.5rem;}
-.slabel{font-size:.72rem;font-weight:600;text-transform:uppercase;
-  letter-spacing:.08em;color:#888;margin-bottom:.4rem;}
-.hint{display:inline-block;background:#fef9e7;border:1px solid #fce7a0;
-  border-radius:8px;padding:.42rem .85rem;font-size:.83rem;
-  color:#7a5100;margin-bottom:.85rem;}
+/* Colour themes per section */
+.s-tamil   { background: #fff8e7; border: 1px solid #f3d98b; }
+.s-tamil .sec-head { background: #fef0c0; color: #7a5000; }
+.s-tamil .sec-body { color: #3a2a00; }
 
-/* Steps in deploy guide */
-.step{background:#fff;border:1px solid #e5dfd4;border-radius:10px;
-  padding:.85rem 1.1rem;margin-bottom:.5rem;font-size:.92rem;line-height:1.65;}
-.num{display:inline-flex;align-items:center;justify-content:center;
-  width:21px;height:21px;border-radius:50%;
-  background:#0f172a;color:#d4a843;
-  font-size:11px;font-weight:700;margin-right:7px;flex-shrink:0;}
+.s-example { background: #f0f7ff; border: 1px solid #b8d8f8; }
+.s-example .sec-head { background: #dbeeff; color: #1a4a8a; }
+.s-example .sec-body { color: #1a3a6a; font-style: italic; }
+
+.s-context { background: #f0faf4; border: 1px solid #a8dcb8; }
+.s-context .sec-head { background: #c8f0d8; color: #1a5a30; }
+.s-context .sec-body { color: #1a3a20; }
+
+.s-doc     { background: #fdf2ff; border: 1px solid #ddb8f8; }
+.s-doc .sec-head { background: #f0d0ff; color: #4a0080; }
+.s-doc .sec-body { color: #280050; }
+
+/* word not found */
+.notfound {
+  font-size: .93rem; color: #b91c1c; background: #fef2f2;
+  border: 1px solid #fecaca; border-radius: 9px; padding: .7rem 1rem; margin-top: .5rem;
+}
+
+/* misc */
+.slabel {
+  font-size: .71rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .09em; color: #999; margin-bottom: .35rem;
+}
+.hint {
+  display: inline-block; background: #fef9e7; border: 1px solid #fce7a0;
+  border-radius: 8px; padding: .4rem .85rem; font-size: .82rem;
+  color: #7a5100; margin-bottom: .85rem;
+}
+.doc-type-chip {
+  display: inline-block; font-size: .75rem; font-weight: 600;
+  padding: 3px 10px; border-radius: 20px;
+  background: #e8f4fd; color: #1155aa;
+  margin-bottom: .7rem;
+}
+.step {
+  background: #fff; border: 1px solid #e5dfd4; border-radius: 10px;
+  padding: .85rem 1.1rem; margin-bottom: .5rem;
+  font-size: .91rem; line-height: 1.65;
+}
+.num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; border-radius: 50%;
+  background: #0f172a; color: #d4a843;
+  font-size: 11px; font-weight: 700; margin-right: 7px; flex-shrink: 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SUFFIX + SANDHI ENGINE  (unchanged from v4 — proven working)
+# DOCUMENT TYPE DETECTOR
+# Detects what kind of govt document was uploaded for context-specific meaning
+# ══════════════════════════════════════════════════════════════════════════════
+DOC_TYPES = {
+    "பட்டா / சிட்டா": ["பட்டா", "சிட்டா", "survey", "சர்வே", "நிலம்", "ஏக்கர்", "புல", "subdivision"],
+    "அரசாணை (G.O.)": ["G.O.", "அரசாணை", "government order", "செயல்முறை", "ஆணை"],
+    "சான்றிதழ்": ["சான்றிதழ்", "certificate", "பிறப்பு", "சாதி", "வருமானம்", "income", "caste", "birth"],
+    "சட்ட / நீதிமன்ற ஆவணம்": ["மனு", "petition", "court", "நீதிமன்றம்", "வழக்கு", "affidavit", "ஒப்பந்தம்"],
+}
+
+def detect_doc_type(text: str) -> str:
+    text_lower = text.lower()
+    for doc_type, keywords in DOC_TYPES.items():
+        if any(kw.lower() in text_lower for kw in keywords):
+            return doc_type
+    return "அரசு ஆவணம்"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUFFIX + SANDHI ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
 SUFFIXES = [
     "ப்படுகிறது","ப்படுகின்றது","க்கப்படும்","ப்படும்","ப்பட்டது",
@@ -105,10 +180,10 @@ SUFFIXES = [
     "ன்றனர்","னார்கள்","னார்","ட்டார்கள்","ட்டார்","தார்கள்","தார்",
     "ட்டேன்","தேன்","டேன்","ினான்","ினாள்","னான்","னாள்",
     "த்தான்","த்தாள்","ிட்டான்","ிட்டாள்",
-    "கிறார்கள்","கிறார்","கிறான்","கிறாள்","கிறோம்","கிறீர்கள்",
+    "கிறார்கள்","கிறார்","கிறான்","கிறாள்","கிறோம்",
     "கின்றார்","கின்றான்","கிறது","கின்றது",
     "வார்கள்","வார்","வான்","வாள்","வோம்","பார்","பான்","வீர்கள்",
-    "வதற்கு","படுவது","கின்றது","வதை","தலை","கல்","வது",
+    "வதற்கு","படுவது","வதை","தலை","கல்","வது",
     "த்திலிருந்து","த்தினால்","த்துடன்","த்தோடு",
     "த்தில்","த்தை","த்தின்","த்துக்கு","த்தோ",
     "இல்லாமல்","இருந்தால்","இருந்து","உடைய","யுடன்","உடன்",
@@ -116,29 +191,26 @@ SUFFIXES = [
     "யில்","யை","யின்","யிடம்","கள்","இல்","ஐ","கு",
     "க்கான","ிய","்ற","்த","ின்","இன்",
 ]
+
 SANDHI_MAP = [
-    ("ந்த","ந்தம்"),("ட்ட","ட்டம்"),("க்க","க்கம்"),
-    ("ல்ல","ல்"),("ன்ன","ன்னம்"),("ர்த்த","ர்த்தம்"),
+    ("ந்த","ந்தம்"), ("ட்ட","ட்டம்"), ("க்க","க்கம்"),
+    ("ல்ல","ல்"),   ("ன்ன","ன்னம்"), ("ர்த்த","ர்த்தம்"),
 ]
 
 def _strip_one(w):
     for s in SUFFIXES:
-        if w.endswith(s) and len(w) > len(s)+1:
+        if w.endswith(s) and len(w) > len(s) + 1:
             return w[:-len(s)]
     return None
 
 def _sandhi(w):
-    out = []
-    for tail, rep in SANDHI_MAP:
-        if w.endswith(tail):
-            out.append(w[:-len(tail)] + rep)
-    return out
+    return [w[:-len(t)] + r for t, r in SANDHI_MAP if w.endswith(t)]
 
 def _variants(w):
     swaps = [("ரை","றை"),("றை","ரை"),("ல","ள"),("ள","ல"),("ன","ந"),("ந","ன")]
-    return [w.replace(a,b,1) for a,b in swaps if a in w and w.replace(a,b,1)!=w]
+    return [w.replace(a,b,1) for a,b in swaps if a in w and w.replace(a,b,1) != w]
 
-def all_candidates(word):
+def all_candidates(word: str) -> list:
     seen, res = set(), []
     def add(w):
         w = w.strip()
@@ -158,153 +230,134 @@ def all_candidates(word):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# IMAGE PREPROCESSING  — improves OCR accuracy significantly
+# IMAGE PREPROCESSING — better OCR accuracy
 # ══════════════════════════════════════════════════════════════════════════════
-def preprocess_image(img: Image.Image) -> Image.Image:
-    """Enhance image for better Tamil OCR results."""
-    # Convert to grayscale
-    img = img.convert("L")
-    # Upscale small images (Tesseract works best at 300+ DPI)
+def preprocess_for_ocr(img: Image.Image) -> Image.Image:
+    img = img.convert("L")                         # grayscale
     w, h = img.size
-    if w < 1500:
-        scale = 1500 / w
-        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-    # Boost contrast
-    img = ImageEnhance.Contrast(img).enhance(2.0)
-    # Sharpen
-    img = img.filter(ImageFilter.SHARPEN)
-    # Binarize (Otsu-like simple threshold)
+    if w < 1800:                                    # upscale to ~300 DPI equivalent
+        scale = 1800 / w
+        img = img.resize((int(w*scale), int(h*scale)), Image.LANCZOS)
+    img = ImageEnhance.Contrast(img).enhance(2.2)  # boost contrast
+    img = ImageEnhance.Sharpness(img).enhance(2.0) # sharpen
     arr = np.array(img)
-    thresh = arr.mean()
+    thresh = int(arr.mean() * 0.85)                # adaptive binarise
     arr = ((arr > thresh) * 255).astype(np.uint8)
     return Image.fromarray(arr)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TEXT CLEANUP  — better readable formatting after OCR
+# TEXT CLEANUP — readable paragraphs after OCR
 # ══════════════════════════════════════════════════════════════════════════════
-def clean_extracted_text(raw: str) -> str:
-    """Clean OCR output into well-formatted readable text."""
+def clean_text(raw: str) -> str:
     lines = raw.splitlines()
-    cleaned = []
+    out = []
     for line in lines:
-        line = line.strip()
+        line = re.sub(r"[|}{\\~`_]", "", line).strip()
+        line = re.sub(r" {2,}", " ", line)
         if not line:
-            if cleaned and cleaned[-1] != "":
-                cleaned.append("")   # preserve paragraph breaks
+            if out and out[-1] != "": out.append("")
             continue
-        # Remove common OCR noise characters
-        line = re.sub(r"[|}{\\~`]", "", line)
-        # Fix multiple spaces
-        line = re.sub(r"  +", " ", line)
-        if line:
-            cleaned.append(line)
-
-    # Join lines — if a line ends with Tamil punctuation or is short, keep newline
-    # otherwise join with space (OCR wraps mid-sentence)
-    result_lines = []
-    i = 0
-    while i < len(cleaned):
-        if cleaned[i] == "":
-            result_lines.append("")
-            i += 1
-            continue
-        current = cleaned[i]
-        # Merge with next non-empty line if current doesn't end a sentence
-        while (i + 1 < len(cleaned)
-               and cleaned[i+1] != ""
-               and not current.endswith((".", "।", ":", "?", "!", "௷", "\u0BE7"))
-               and len(current) > 5):
-            i += 1
-            current = current + " " + cleaned[i]
-        result_lines.append(current)
-        i += 1
-
-    return "\n".join(result_lines).strip()
+        out.append(line)
+    # Merge short wrapped lines (OCR wraps mid-sentence)
+    merged, i = [], 0
+    while i < len(out):
+        if out[i] == "":
+            merged.append(""); i += 1; continue
+        cur = out[i]
+        while (i+1 < len(out) and out[i+1] != ""
+               and not cur.rstrip().endswith((".", ":", "?", "!", "।"))
+               and len(cur) > 8):
+            i += 1; cur += " " + out[i]
+        merged.append(cur); i += 1
+    return "\n".join(merged).strip()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONTEXT FINDER  — finds the sentence in the doc containing the searched word
+# CONTEXT SENTENCE FINDER
 # ══════════════════════════════════════════════════════════════════════════════
-def find_context_sentence(text: str, word: str) -> str | None:
-    """Find the sentence in extracted text that contains the word."""
-    # Split into sentences
-    sentences = re.split(r'[.!?।\n]{1,3}', text)
-    candidates = all_candidates(word)
-    for sent in sentences:
-        sent = sent.strip()
-        if len(sent) < 5:
-            continue
-        for cand in candidates:
-            if cand in sent:
-                return sent
-    # Fallback: return fragment around word position
-    for cand in candidates:
+def find_context(text: str, word: str) -> str | None:
+    sentences = re.split(r'(?<=[.!?।\n])\s*', text)
+    for cand in all_candidates(word):
+        for sent in sentences:
+            if cand in sent and len(sent.strip()) > 5:
+                return sent.strip()
         idx = text.find(cand)
         if idx >= 0:
-            start = max(0, idx - 60)
-            end   = min(len(text), idx + len(cand) + 60)
-            return "…" + text[start:end].strip() + "…"
+            s = max(0, idx-70); e = min(len(text), idx+len(cand)+70)
+            return "…" + text[s:e].strip() + "…"
     return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SOURCE 1 — Claude API  (rich explanation with Tamil + English + context)
-# Set ANTHROPIC_API_KEY in Streamlit Cloud → Settings → Secrets
-# Format in secrets: ANTHROPIC_API_KEY = "sk-ant-..."
+# CLAUDE API — rich Tamil explanation
 # ══════════════════════════════════════════════════════════════════════════════
-def src_claude_explain(word: str, root: str, context_sentence: str | None) -> dict | None:
-    api_key = st.secrets.get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
+def ask_claude(word: str, root: str, doc_type: str, context_sent: str | None) -> dict | None:
+    key = st.secrets.get("ANTHROPIC_API_KEY","") or os.environ.get("ANTHROPIC_API_KEY","")
+    if not key:
         return None
 
-    ctx_part = (f'\nThis word appears in the following sentence from a government document:\n"{context_sentence}"'
-                if context_sentence else "")
+    ctx = f'\nஆவணத்தில் இந்த வரியில் இந்த சொல் வருகிறது:\n"{context_sent}"' if context_sent else ""
 
-    prompt = f"""You are a Tamil language expert helping citizens understand government documents.
+    prompt = f"""நீங்கள் ஒரு தமிழ் மொழி நிபுணர். அரசு ஆவணங்களை புரிந்துகொள்ள மக்களுக்கு உதவுகிறீர்கள்.
 
-Word to explain: {word}
-Root form: {root}{ctx_part}
+ஆவண வகை: {doc_type}
+தேடிய சொல்: {word}
+அடி வடிவம்: {root}{ctx}
 
-Give a clear explanation in this exact JSON format (no extra text):
+கீழே கொடுக்கப்பட்ட JSON வடிவத்தில் மட்டும் பதில் தாருங்கள் (வேறு எதுவும் வேண்டாம்):
 {{
-  "tamil_meaning": "meaning in simple Tamil (2-3 words or a short phrase)",
-  "english_meaning": "clear English meaning in 1-2 sentences",
-  "document_context": "what this word means specifically in a government/legal document context (1-2 sentences)",
-  "example_sentence": "a simple Tamil example sentence using this word, with English translation in parentheses"
+  "tamil_meaning": "எளிய தமிழில் பொருள் — 1 முதல் 2 வரிகள். சாதாரண மக்கள் புரிந்துகொள்ளும் வகையில் எழுதவும்.",
+  "example_sentence": "இந்த சொல்லை பயன்படுத்தி ஒரு எளிய தமிழ் வாக்கியம் எழுதவும்.",
+  "doc_context": "இந்த சொல் {doc_type} ஆவணத்தில் என்ன குறிக்கிறது என்று 1-2 வரிகளில் விளக்கவும்.",
+  "important_note": "இந்த சொல்லை பார்க்கும்போது குடிமக்கள் கவனிக்க வேண்டியது என்ன? (optional, only if relevant)"
 }}
 
-Keep the language very simple. The reader may not be educated. Be direct and clear."""
+மிக எளிய தமிழில் எழுதவும். சங்க இலக்கிய தமிழ் வேண்டாம்."""
 
     try:
         r = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": api_key,
+                "x-api-key": key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 400,
-                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 500,
+                "messages": [{"role":"user","content": prompt}],
             },
             timeout=8,
         )
         if r.status_code == 200:
-            text = r.json()["content"][0]["text"].strip()
-            # Strip markdown code fences if present
-            text = re.sub(r"^```json\s*|```$", "", text.strip(), flags=re.MULTILINE).strip()
-            return json.loads(text)
+            raw = r.json()["content"][0]["text"].strip()
+            raw = re.sub(r"^```json\s*|```$","", raw.strip(), flags=re.MULTILINE).strip()
+            return json.loads(raw)
     except Exception:
         pass
     return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SOURCE 2 — Tamil Wiktionary
+# FALLBACK SOURCES (when no API key)
 # ══════════════════════════════════════════════════════════════════════════════
-def src_wiktionary(word: str):
+def src_mymemory(word: str) -> str | None:
+    try:
+        r = requests.get(
+            "https://api.mymemory.translated.net/get",
+            params={"q": word, "langpair": "ta|en"},
+            timeout=4,
+        )
+        if r.status_code == 200:
+            t = r.json().get("responseData",{}).get("translatedText","")
+            if t and t.lower() != word.lower() and "INVALID" not in t.upper() and len(t)>1:
+                return t.strip()
+    except Exception:
+        pass
+    return None
+
+def src_wiktionary(word: str) -> str | None:
     try:
         url = f"https://ta.wiktionary.org/api/rest_v1/page/definition/{requests.utils.quote(word)}"
         r = requests.get(url, timeout=3)
@@ -315,96 +368,57 @@ def src_wiktionary(word: str):
                 if isinstance(entries, list) and entries:
                     raw = entries[0].get("definitions",[{}])[0].get("definition","")
                     clean = re.sub(r"<[^>]+>","",raw).strip()
-                    if clean and len(clean) > 3:
+                    if clean and len(clean)>3:
                         return clean
     except Exception:
         pass
     return None
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SOURCE 3 — MyMemory
-# ══════════════════════════════════════════════════════════════════════════════
-def src_mymemory(word: str):
-    try:
-        r = requests.get(
-            "https://api.mymemory.translated.net/get",
-            params={"q": word, "langpair": "ta|en"},
-            timeout=4,
-        )
-        if r.status_code == 200:
-            t = r.json().get("responseData",{}).get("translatedText","")
-            if t and t.strip().lower() != word.lower() and "INVALID" not in t.upper() and len(t.strip())>1:
-                return t.strip()
-    except Exception:
-        pass
-    return None
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SOURCE 4 — Google Translate
-# ══════════════════════════════════════════════════════════════════════════════
-def src_google(word: str):
+def src_google(word: str) -> str | None:
     try:
         from deep_translator import GoogleTranslator
         t = GoogleTranslator(source="ta", target="en").translate(word)
-        if t and t.strip().lower() != word.lower():
+        if t and t.lower() != word.lower():
             return t.strip()
     except Exception:
         pass
     return None
 
+def fallback_lookup(word: str) -> str | None:
+    candidates = all_candidates(word)
+    t = src_mymemory(word)
+    if t: return t
+    for c in candidates[1:]:
+        t = src_mymemory(c)
+        if t: return t
+        t = src_wiktionary(c)
+        if t: return t
+    return src_google(word)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ORCHESTRATOR
+# MAIN LOOKUP ORCHESTRATOR
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_data(ttl=3600, show_spinner=False)
-def lookup(word: str, doc_text: str = "") -> dict:
-    candidates = all_candidates(word)
-    root_used  = word
-
-    # Find which candidate actually has a translation (for root detection)
-    translation = src_mymemory(word)
-    if not translation:
-        for cand in candidates[1:]:
-            t = src_mymemory(cand)
-            if t:
-                root_used = cand
-                translation = t
-                break
-
-    if not translation:
-        translation = src_google(word)
-
-    # Find sentence context from document
-    context_sent = find_context_sentence(doc_text, word) if doc_text else None
-
-    # Try Claude for rich explanation
-    ai_result = src_claude_explain(word, root_used, context_sent)
-
-    # Fallback: Wiktionary
-    wiki_def = None
-    for cand in candidates:
-        wiki_def = src_wiktionary(cand)
-        if wiki_def:
-            if root_used == word:
-                root_used = cand
-            break
-
+def lookup(word: str, doc_text: str = "", doc_type: str = "அரசு ஆவணம்") -> dict:
+    candidates  = all_candidates(word)
+    root_used   = candidates[1] if len(candidates) > 1 else word  # first stripped form
+    ctx_sent    = find_context(doc_text, word) if doc_text else None
+    ai          = ask_claude(word, root_used, doc_type, ctx_sent)
+    fallback    = None if ai else fallback_lookup(word)
     return {
-        "word":        word,
-        "root":        root_used,
-        "translation": translation,
-        "wiki":        wiki_def,
-        "ai":          ai_result,
-        "context":     context_sent,
-        "found":       bool(translation or wiki_def or ai_result),
-        "tried":       candidates,
+        "word":     word,
+        "root":     root_used,
+        "ai":       ai,
+        "fallback": fallback,
+        "context":  ctx_sent,
+        "found":    bool(ai or fallback),
+        "tried":    candidates,
     }
 
 
 # ── Audio ─────────────────────────────────────────────────────────────────────
-def speak(word: str):
+def speak(word):
     try:
         buf = io.BytesIO()
         gTTS(text=word, lang="ta", slow=False).write_to_fp(buf)
@@ -416,39 +430,38 @@ def speak(word: str):
 
 # ── OCR / Extraction ──────────────────────────────────────────────────────────
 def ocr_image(img: Image.Image) -> str:
-    enhanced = preprocess_image(img)
+    enhanced = preprocess_for_ocr(img)
     raw = pytesseract.image_to_string(enhanced, config=r"--oem 3 --psm 6 -l tam+eng")
-    return clean_extracted_text(raw)
+    return clean_text(raw)
 
 def extract_pdf(f) -> str:
     texts = []
     with pdfplumber.open(f) as pdf:
         for page in pdf.pages:
             t = page.extract_text()
-            if t:
-                texts.append(clean_extracted_text(t))
+            if t: texts.append(clean_text(t))
     return "\n\n".join(texts)
 
 def is_tamil(w): return bool(re.search(r"[\u0B80-\u0BFF]", w))
-def tokenize(t): return re.findall(r"[\u0B80-\u0BFF]+|[A-Za-z0-9]+|[^\w]", t)
+def tokenize(t): return re.findall(r"[\u0B80-\u0BFF]+|[A-Za-z0-9]+", t)
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
-for k, v in [("text",""),("word","")]:
-    st.session_state.setdefault(k, v)
+for k,v in [("text",""),("word",""),("doc_type","அரசு ஆவணம்")]:
+    st.session_state.setdefault(k,v)
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hdr">
-  <h1>📜 Tamil Government Document Reader</h1>
-  <p>Upload PDF or image · Read clearly formatted text · Search any Tamil word · Get full explanation in Tamil &amp; English · Free</p>
+  <h1>📜 தமிழ் அரசு ஆவண வாசகன்</h1>
+  <p>Tamil Government Document Reader — Upload PDF or image · Read clearly · Search any Tamil word · Get full Tamil explanation</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-t_reader, t_deploy = st.tabs(["📄 Document Reader", "🚀 GitHub → Streamlit Cloud Guide"])
+t_reader, t_deploy = st.tabs(["📄 ஆவண வாசகன்", "🚀 GitHub → Streamlit Cloud Guide"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -457,159 +470,176 @@ t_reader, t_deploy = st.tabs(["📄 Document Reader", "🚀 GitHub → Streamlit
 with t_reader:
     left, right = st.columns([3, 2], gap="large")
 
+    # ── LEFT: Upload + Display ───────────────────────────────────────────────
     with left:
-        st.markdown('<div class="slabel">Step 1 — Upload Document</div>', unsafe_allow_html=True)
+        st.markdown('<div class="slabel">படி 1 — ஆவணம் பதிவேற்றவும்</div>', unsafe_allow_html=True)
         uploaded = st.file_uploader("file", type=["pdf","png","jpg","jpeg"], label_visibility="collapsed")
 
         if uploaded:
-            with st.spinner("Extracting and formatting text…"):
+            with st.spinner("உரை எடுக்கிறோம்…"):
                 if uploaded.type == "application/pdf":
                     text = extract_pdf(uploaded)
                     if not text.strip():
-                        st.warning("No selectable text in PDF — running OCR…")
+                        st.warning("PDF-ல் தேர்வு செய்யக்கூடிய உரை இல்லை — OCR இயக்குகிறோம்…")
                         try:
                             from pdf2image import convert_from_bytes
                             imgs = convert_from_bytes(uploaded.getvalue(), first_page=1, last_page=1)
                             text = ocr_image(imgs[0]) if imgs else ""
                         except Exception as e:
-                            st.error(f"OCR error: {e}"); text = ""
+                            st.error(f"OCR பிழை: {e}"); text = ""
                 else:
                     text = ocr_image(Image.open(uploaded))
-                st.session_state.text = text
+
+                st.session_state.text     = text
+                st.session_state.doc_type = detect_doc_type(text)
 
         if st.session_state.text:
-            st.markdown('<div class="slabel" style="margin-top:1rem">Step 2 — Read Document</div>', unsafe_allow_html=True)
-            st.markdown('<div class="hint">💡 Find a difficult word → type it in the right panel or pick from the dropdown below</div>', unsafe_allow_html=True)
+            # Show detected document type
+            st.markdown(
+                f'<div class="doc-type-chip">📋 கண்டறிந்த ஆவண வகை: {st.session_state.doc_type}</div>',
+                unsafe_allow_html=True,
+            )
 
-            # Display formatted text
+            st.markdown('<div class="slabel">படி 2 — ஆவணம் படிக்கவும்</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="hint">💡 புரியாத சொல்லை கீழே உள்ள dropdown-ல் தேர்வு செய்யுங்கள் அல்லது வலது பக்கத்தில் தட்டச்சு செய்யுங்கள்</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Document text — readable
             st.markdown(f'<div class="docbox">{st.session_state.text}</div>', unsafe_allow_html=True)
 
-            # Word picker
-            tamil_words = sorted({t for t in tokenize(st.session_state.text) if is_tamil(t) and len(t)>1})
+            # Word picker dropdown
+            tamil_words = sorted({t for t in tokenize(st.session_state.text) if is_tamil(t) and len(t) > 1})
             if tamil_words:
-                st.markdown('<div class="slabel" style="margin-top:.7rem">Or pick a word from the document</div>', unsafe_allow_html=True)
-                pick = st.selectbox("pick", ["— select —"] + tamil_words, label_visibility="collapsed", key="pick")
-                if pick != "— select —":
+                st.markdown('<div class="slabel" style="margin-top:.7rem">ஆவணத்தில் உள்ள சொற்கள்</div>', unsafe_allow_html=True)
+                pick = st.selectbox("சொல் தேர்வு", ["— தேர்வு செய்யவும் —"] + tamil_words,
+                                    label_visibility="collapsed", key="pick")
+                if pick != "— தேர்வு செய்யவும் —":
                     st.session_state.word = pick
         else:
-            st.info("Upload a government document (PDF or scanned image) above to begin.")
+            st.info("மேலே அரசு ஆவணம் (PDF அல்லது படம்) பதிவேற்றவும்.")
 
-    # ── RIGHT PANEL ───────────────────────────────────────────────────────────
+    # ── RIGHT: Word Lookup ────────────────────────────────────────────────────
     with right:
-        st.markdown('<div class="slabel">Word Meaning Lookup</div>', unsafe_allow_html=True)
+        st.markdown('<div class="slabel">சொல் பொருள்</div>', unsafe_allow_html=True)
 
-        typed = st.text_input("Type any Tamil word:", placeholder="உதாரணம்: ஒப்பந்தம், விரும்பினால்", key="typed")
+        typed = st.text_input(
+            "தமிழ் சொல் தட்டச்சு செய்யவும்:",
+            placeholder="உதா: ஒப்பந்தம், விரும்பினால், சர்வே",
+            key="typed",
+        )
         if typed:
             st.session_state.word = typed.strip()
 
         w = st.session_state.word.strip()
 
         if w and is_tamil(w):
-            with st.spinner(f"Explaining '{w}'…"):
-                res   = lookup(w, st.session_state.text)
+            with st.spinner(f"'{w}' — பொருள் தேடுகிறோம்…"):
+                res   = lookup(w, st.session_state.text, st.session_state.doc_type)
                 audio = speak(w)
 
-            root_note = (f" (root: {res['root']})" if res["root"] != res["word"] else "")
-
-            # ── Render meaning card ──────────────────────────────────────────
+            # ── Meaning card ─────────────────────────────────────────────────
+            root_note = f"(அடி வடிவம்: {res['root']})" if res["root"] != res["word"] else ""
             st.markdown(f"""
             <div class="mcard">
               <div class="mword">{res['word']}</div>
-              <div class="mroot">{root_note if root_note else "searched as-is"}</div>
+              <div class="mroot">{root_note}</div>
             """, unsafe_allow_html=True)
 
             if res["found"]:
+                ai = res["ai"]
 
-                # ── AI RICH EXPLANATION (best) ──
-                if res["ai"]:
-                    ai = res["ai"]
+                if ai:
+                    # ── 1. Tamil meaning ──
                     if ai.get("tamil_meaning"):
                         st.markdown(f"""
-                        <span class="badge b-ai">தமிழ் பொருள்</span>
-                        <div class="sec-body">{ai['tamil_meaning']}</div>
-                        """, unsafe_allow_html=True)
+                        <div class="sec s-tamil">
+                          <div class="sec-head">📖 தமிழ் பொருள்</div>
+                          <div class="sec-body">{ai['tamil_meaning']}</div>
+                        </div>""", unsafe_allow_html=True)
 
-                    if ai.get("english_meaning"):
-                        st.markdown(f"""
-                        <div class="sec-label">English Meaning</div>
-                        <div class="sec-body">{ai['english_meaning']}</div>
-                        """, unsafe_allow_html=True)
-
-                    if ai.get("document_context"):
-                        st.markdown(f"""
-                        <div class="sec-label">In Government Documents</div>
-                        <div class="sec-body">{ai['document_context']}</div>
-                        """, unsafe_allow_html=True)
-
+                    # ── 2. Example sentence ──
                     if ai.get("example_sentence"):
                         st.markdown(f"""
-                        <div class="sec-label">Example / எடுத்துக்காட்டு</div>
-                        <div class="ctx-box">{ai['example_sentence']}</div>
-                        """, unsafe_allow_html=True)
+                        <div class="sec s-example">
+                          <div class="sec-head">✏️ எடுத்துக்காட்டு வாக்கியம்</div>
+                          <div class="sec-body">{ai['example_sentence']}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    # ── 3. Document context ──
+                    if ai.get("doc_context"):
+                        st.markdown(f"""
+                        <div class="sec s-doc">
+                          <div class="sec-head">📋 {res.get('doc_type', st.session_state.doc_type)} — பயன்பாடு</div>
+                          <div class="sec-body">{ai['doc_context']}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    # ── 4. Important note (if any) ──
+                    if ai.get("important_note"):
+                        st.markdown(f"""
+                        <div class="sec s-context">
+                          <div class="sec-head">⚠️ கவனிக்க வேண்டியது</div>
+                          <div class="sec-body">{ai['important_note']}</div>
+                        </div>""", unsafe_allow_html=True)
 
                 else:
-                    # ── FALLBACK: show translation + wiktionary ──
-                    if res["translation"]:
-                        st.markdown(f"""
-                        <span class="badge b-mm">English meaning</span>
-                        <div class="sec-body">{res['translation']}</div>
-                        """, unsafe_allow_html=True)
+                    # ── Fallback: English translation ──
+                    st.markdown(f"""
+                    <div class="sec s-tamil">
+                      <div class="sec-head">🔤 பொருள் (English)</div>
+                      <div class="sec-body">{res['fallback']}</div>
+                    </div>""", unsafe_allow_html=True)
 
-                    if res["wiki"]:
-                        st.markdown(f"""
-                        <span class="badge b-wt">Wiktionary definition</span>
-                        <div class="sec-body">{res['wiki']}</div>
-                        """, unsafe_allow_html=True)
-
-                # ── CONTEXT IN DOCUMENT ──
+                # ── 5. Sentence from document ──
                 if res["context"]:
                     st.markdown(f"""
-                    <div class="sec-label">Found in your document</div>
-                    <div class="ctx-box">{res['context']}</div>
-                    """, unsafe_allow_html=True)
+                    <div class="sec s-context">
+                      <div class="sec-head">📄 உங்கள் ஆவணத்தில்</div>
+                      <div class="sec-body">{res['context']}</div>
+                    </div>""", unsafe_allow_html=True)
 
             else:
                 st.markdown(f"""
                 <div class="notfound">
-                  ⚠️ No meaning found for <strong>{res['word']}</strong>.<br>
-                  Tried {len(res['tried'])} root forms. Try typing a shorter form.
+                  ⚠️ <strong>{res['word']}</strong> — பொருள் கிடைக்கவில்லை.<br>
+                  {len(res['tried'])} வடிவங்கள் தேடப்பட்டன. சிறிய வடிவில் மீண்டும் முயற்சிக்கவும்.
                 </div>""", unsafe_allow_html=True)
 
             st.markdown("</div>", unsafe_allow_html=True)
 
             if audio:
-                st.markdown("**🔊 Pronunciation**")
+                st.markdown("**🔊 உச்சரிப்பு**")
                 st.audio(audio, format="audio/mp3")
 
-            with st.expander("🔍 Roots tried"):
+            with st.expander("🔍 தேடிய வடிவங்கள்"):
                 for i, c in enumerate(res["tried"], 1):
                     st.write(f"{i}. `{c}`")
 
         elif w:
-            st.info("Please enter a word in Tamil script.")
+            st.info("தமிழ் எழுத்தில் சொல்லை தட்டச்சு செய்யவும்.")
         else:
             st.markdown("""
             <div class="mcard" style="text-align:center;color:#ccc;padding:2.5rem 1rem;">
               <div style="font-size:2.5rem">🔍</div>
-              <div style="font-size:.92rem;margin-top:.4rem">
-                Type any Tamil word above<br>or pick one from the document
+              <div style="font-family:'Noto Sans Tamil',sans-serif;font-size:1rem;margin-top:.4rem;color:#999;">
+                மேலே சொல்லை தட்டச்சு செய்யுங்கள்<br>அல்லது ஆவணத்தில் இருந்து தேர்வு செய்யுங்கள்
               </div>
             </div>""", unsafe_allow_html=True)
 
-        st.caption("Sources: AI explanation + Tamil Wiktionary + MyMemory + Google Translate")
-
-        # ── API key setup info ──
-        api_key = st.secrets.get("ANTHROPIC_API_KEY","") or os.environ.get("ANTHROPIC_API_KEY","")
-        if not api_key:
-            with st.expander("⚙️ Enable AI-powered explanations"):
+        # API key notice
+        has_key = bool(st.secrets.get("ANTHROPIC_API_KEY","") or os.environ.get("ANTHROPIC_API_KEY",""))
+        if not has_key:
+            with st.expander("⚙️ AI விளக்கம் இயக்கவும் (தமிழ் பொருள் + எடுத்துக்காட்டு)"):
                 st.markdown("""
-                For richer Tamil + English + document-context explanations, add your free Anthropic API key:
-                1. Get a free key at [console.anthropic.com](https://console.anthropic.com)
-                2. In Streamlit Cloud → your app → **Settings → Secrets**
-                3. Add: `ANTHROPIC_API_KEY = "sk-ant-..."`
-                4. Save → app restarts automatically
+                **AI-powered explanations** (தமிழ் பொருள், எடுத்துக்காட்டு, ஆவண சூழல்) க்கு:
 
-                Without the key, the app still works using MyMemory + Wiktionary.
+                1. [console.anthropic.com](https://console.anthropic.com) — இலவச API key பெறவும்
+                2. Streamlit Cloud → உங்கள் app → **Settings → Secrets**
+                3. இதை சேர்க்கவும்: `ANTHROPIC_API_KEY = "sk-ant-..."`
+                4. Save → app தானாக மறுதொடக்கம் ஆகும்
+
+                Key இல்லாமலும் app வேலை செய்யும் (English translation மட்டும் கிடைக்கும்).
                 """)
 
 
@@ -617,36 +647,37 @@ with t_reader:
 # TAB 2 — DEPLOY GUIDE
 # ══════════════════════════════════════════════════════════════════════════════
 with t_deploy:
-    st.markdown("## 🚀 Connect GitHub → Streamlit Cloud (Free, ~10 min one-time setup)")
-    st.markdown("After setup, every save on GitHub **auto-deploys in ~60 seconds**.")
+    st.markdown("## 🚀 GitHub → Streamlit Cloud — ஒரே நேரம் Setup (~10 நிமிடம்)")
+    st.markdown("Setup முடிந்தால், GitHub-ல் save செய்தால் **60 நொடியில் auto-deploy** ஆகும்.")
 
     st.markdown("""
     <div class="step"><span class="num">1</span>
-      <strong>Create free GitHub account</strong> →
+      <strong>GitHub account உருவாக்கவும் (இலவசம்)</strong> →
       <a href="https://github.com" target="_blank">github.com</a> → Sign up
     </div>
     <div class="step"><span class="num">2</span>
-      <strong>New repository</strong> → click <code>+</code> → New repository<br>
+      <strong>New repository உருவாக்கவும்</strong> → <code>+</code> → New repository<br>
       Name: <code>tamil-doc-reader</code> | Visibility: <strong>Public</strong> → Create
     </div>
     <div class="step"><span class="num">3</span>
-      <strong>Upload 3 files</strong> to repo root:<br>
-      <code>app.py</code> &emsp; <code>requirements.txt</code> &emsp; <code>packages.txt</code><br>
+      <strong>3 files upload செய்யவும்</strong> — "uploading an existing file" என்பதை click செய்யவும்<br>
+      <code>app.py</code> &emsp; <code>requirements.txt</code> &emsp; <code>packages.txt</code>
       → Commit changes
     </div>
     <div class="step"><span class="num">4</span>
       <a href="https://share.streamlit.io" target="_blank">share.streamlit.io</a>
-      → Sign in with GitHub → <strong>New app</strong><br>
-      Repo: <code>tamil-doc-reader</code> | Branch: <code>main</code> | File: <code>app.py</code> → Deploy
+      → GitHub உடன் Sign in → <strong>New app</strong><br>
+      Repo: <code>tamil-doc-reader</code> | Branch: <code>main</code> | File: <code>app.py</code>
+      → <strong>Deploy!</strong>
     </div>
     <div class="step"><span class="num">5</span>
-      Wait 3–5 min for first build → get free URL:
+      3–5 நிமிடம் காத்திருக்கவும் → இலவச URL கிடைக்கும்:
       <code>https://yourname-tamil-doc-reader.streamlit.app</code> ✅
     </div>
     <div class="step"><span class="num">6</span>
-      <strong>Add AI key (optional but recommended):</strong><br>
-      Streamlit Cloud → your app → Settings → Secrets → add:<br>
-      <code>ANTHROPIC_API_KEY = "sk-ant-your-key-here"</code>
+      <strong>AI விளக்கம் சேர்க்க (optional):</strong><br>
+      Streamlit Cloud → app → Settings → Secrets →
+      <code>ANTHROPIC_API_KEY = "sk-ant-..."</code> சேர்க்கவும்
     </div>
     """, unsafe_allow_html=True)
 
@@ -671,14 +702,14 @@ with t_deploy:
         st.markdown("**`packages.txt`**")
         st.code("tesseract-ocr\ntesseract-ocr-tam\ntesseract-ocr-eng\npoppler-utils", language="text")
 
-    st.success("✅ Zero paid services needed. AI explanation is optional — app fully works without it.")
+    st.success("✅ கட்டண சேவை இல்லை. API key இல்லாமலும் வேலை செய்யும். AI key optional.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="text-align:center;font-size:.75rem;color:#bbb;margin-top:2rem;
+<div style="text-align:center;font-size:.74rem;color:#bbb;margin-top:2rem;
   padding-top:.8rem;border-top:1px solid #ddd4c4;">
-  Tamil Govt Document Reader v5 · OCR: Tesseract ·
-  AI: Claude (optional) · Dict: Tamil Wiktionary + MyMemory + Google Translate ·
+  தமிழ் அரசு ஆவண வாசகன் v6 · OCR: Tesseract ·
+  AI: Claude Haiku (optional) · Dictionary: Tamil Wiktionary + MyMemory + Google Translate ·
   Audio: gTTS · 100% Free
 </div>
 """, unsafe_allow_html=True)
