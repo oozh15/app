@@ -491,7 +491,12 @@ ALIASES = {
 # WORD CLEANER + TRANSLITERATION DETECTOR
 # ══════════════════════════════════════════════════════════════════════════════
 def clean_word(w: str) -> str:
-    return re.sub(r'^[\s,.\-;:"""\'()[\]/\\|]+|[\s,.\-;:"""\'()[\]/\\|]+$', '', w).strip()
+    # Strip invisible Unicode control characters (ZWNJ U+200C, ZWJ U+200D, BOM, etc.)
+    # Tamil keyboards and fonts often append these silently
+    w = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\u202a-\u202e\u2060-\u2064\ufeff]', '', w)
+    # Strip leading/trailing punctuation and whitespace
+    w = re.sub(r'^[\s,.\-;:\u201c\u201d"\'()[\]/\\|]+|[\s,.\-;:\u201c\u201d"\'()[\]/\\|]+$', '', w)
+    return w.strip()
 
 _REAL_EN = re.compile(
     r'\b(from|now|on|here|after|hereafter|owner|person|agreement|contract|property|'
