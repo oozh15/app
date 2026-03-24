@@ -13,6 +13,8 @@ from PIL import Image, ImageEnhance
 import pdfplumber, pytesseract
 import numpy as np
 
+APP_VERSION = "v10 — 62 words | 10 sources | ZWNJ fix"
+
 st.set_page_config(page_title="தமிழ் ஆவண வாசகன்", page_icon="📜", layout="wide")
 
 st.markdown("""
@@ -471,6 +473,145 @@ D = {
         "எடுத்துக்காட்டு": "அப்பா இறந்த பிறகு வாரிசு சான்றிதழ் வாங்கி சொத்து பெற்றனர்.",
         "ஆவண பொருள்": "வாரிசு சான்றிதழ் இல்லாமல் இறந்தவரின் சொத்தை சட்டரீதியாக கோர முடியாது.",
     },
+
+    # ── CRITICAL MISSING WORDS ────────────────────────────────────────────────
+    "பத்திரம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "சட்டரீதியான முக்கியமான ஆவணம் — சொத்தின் உரிமையை நிரூபிக்கும் எழுத்துப்பூர்வ ஆவணம். விற்பனை பத்திரம், அடமான பத்திரம் என பல வகை உண்டு",
+        "எடுத்துக்காட்டு": "வீடு வாங்கிய பிறகு விற்பனை பத்திரம் பதிவு செய்தனர்.",
+        "ஆவண பொருள்": "பத்திரம் பதிவு அலுவலகத்தில் பதிவு செய்வது கட்டாயம். பதிவு செய்யாத பத்திரம் சட்டத்தில் செல்லாது.",
+        "கவனிக்க": "பத்திரம் பதிவு செய்யாவிட்டால் சொத்தின் மீது உங்கள் உரிமை சட்டரீதியாக உறுதிப்படாது.",
+    },
+    "கிரயம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "சொத்தை வாங்கும் விலை — சொத்து விற்பனை தொகை",
+        "எடுத்துக்காட்டு": "இந்த நிலத்தின் கிரயம் 10 லட்சம் ரூபாய்.",
+        "ஆவண பொருள்": "கிரயம் என்பது சொத்தை வாங்கிய விலை. இதை பத்திரத்தில் குறிப்பிட வேண்டும்.",
+    },
+    "கிரய பத்திரம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "சொத்து விற்பனை ஆவணம் — விற்கும் விலை மற்றும் உரிமை மாற்றம் குறிப்பிட்ட சட்ட ஆவணம்",
+        "எடுத்துக்காட்டு": "கிரய பத்திரம் பதிவு செய்த பிறகு சொத்து வாங்குபவருக்கு சேரும்.",
+        "ஆவண பொருள்": "கிரய பத்திரம் = விற்பனை பத்திரம். பதிவு செய்தால் மட்டுமே சட்ட உரிமை.",
+    },
+    "வில்லங்கம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "ஒரு சொத்தின் மீது உள்ள சட்ட தடை அல்லது கடன் சுமை",
+        "எடுத்துக்காட்டு": "இந்த நிலத்தில் வில்லங்கம் இல்லை என்று சான்றிதழ் வாங்கினார்.",
+        "ஆவண பொருள்": "வில்லங்கம் உள்ள சொத்தை வாங்கினால் அந்த கடனும் உங்களுக்கு வரும்.",
+        "கவனிக்க": "சொத்து வாங்கும் முன் EC (வில்லங்கம் இல்லா சான்றிதழ்) வாங்குவது மிக முக்கியம்.",
+    },
+    "முத்திரை": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "அதிகாரப்பூர்வமான அடையாளத்தை குறிக்கும் முத்திரை — அரசு அல்லது அதிகாரி ஒரு ஆவணத்தை உறுதிப்படுத்தும் முத்திரை",
+        "எடுத்துக்காட்டு": "அரசு முத்திரை பதிக்கப்பட்ட ஆவணம் மட்டுமே செல்லுபடியாகும்.",
+        "ஆவண பொருள்": "முத்திரை இல்லாத ஆவணம் போலியாக இருக்கலாம். எப்போதும் முத்திரையை சரிபார்க்கவும்.",
+    },
+    "ஸ்டாம்ப் பேப்பர்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "அரசு ஸ்டாம்ப் டியூட்டி கட்டிய சிறப்பு அரசு காகிதம் — இதில் எழுதப்பட்ட ஒப்பந்தங்கள் சட்டரீதியானவை",
+        "எடுத்துக்காட்டு": "ஒப்பந்தம் 100 ரூபாய் ஸ்டாம்ப் பேப்பரில் எழுதப்பட்டது.",
+        "ஆவண பொருள்": "சட்டரீதியான ஒப்பந்தங்கள் ஸ்டாம்ப் பேப்பரில் எழுதப்பட வேண்டும்.",
+    },
+    "தாக்கல்": {
+        "pos": "வினைச்சொல் / பெயர்ச்சொல்",
+        "பொருள்": "ஆவணங்களை நீதிமன்றம் அல்லது அரசு அலுவலகத்தில் சமர்ப்பிப்பது",
+        "எடுத்துக்காட்டு": "வழக்கு நீதிமன்றத்தில் தாக்கல் செய்யப்பட்டது.",
+        "ஆவண பொருள்": "தாக்கல் செய்த பிறகு ரசீது எண் வைத்திருங்கள்.",
+    },
+    "தவணை": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "கடனை குறிப்பிட்ட காலத்தில் சிறிய தொகைகளாக செலுத்துவது — installment என்று ஆங்கிலத்தில் சொல்வார்கள்",
+        "எடுத்துக்காட்டு": "மாதந்தோறும் 5000 ரூபாய் தவணையில் கடன் திரும்ப செலுத்துவார்.",
+        "ஆவண பொருள்": "தவணை தவறினால் அபராதம் வசூலிக்கப்படும்.",
+    },
+    "வட்டி": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "கடனுக்கு கூடுதலாக செலுத்த வேண்டிய தொகை — interest என்று ஆங்கிலத்தில் சொல்வார்கள்",
+        "எடுத்துக்காட்டு": "ஆண்டுக்கு 12% வட்டி என்று ஒப்பந்தத்தில் குறிப்பிடப்பட்டுள்ளது.",
+        "ஆவண பொருள்": "ஒப்பந்தத்தில் வட்டி விகிதம் தெளிவாக குறிப்பிடப்பட வேண்டும்.",
+    },
+    "அபராதம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "விதிமுறை மீறியதற்கு விதிக்கப்படும் கூடுதல் தொகை",
+        "எடுத்துக்காட்டு": "காலக்கெடுவில் வரி கட்டாவிட்டால் அபராதம் விதிக்கப்படும்.",
+        "ஆவண பொருள்": "அபராதம் தவிர்க்க காலக்கெடுவிற்குள் அனைத்தையும் செய்யுங்கள்.",
+    },
+    "ஆஜர்": {
+        "pos": "வினைச்சொல் / பெயர்ச்சொல்",
+        "பொருள்": "நீதிமன்றம் அல்லது அலுவலகத்தில் நேரில் வந்து நிற்பது",
+        "எடுத்துக்காட்டு": "நீதிமன்றத்தில் குறிப்பிட்ட தேதியில் ஆஜராக வேண்டும்.",
+        "ஆவண பொருள்": "ஆஜராகாவிட்டால் ஒரே தரப்பு சார்பில் தீர்ப்பு வரலாம்.",
+        "கவனிக்க": "நீதிமன்ற சம்மன் வந்தால் கட்டாயம் ஆஜராக வேண்டும்.",
+    },
+    "சம்மன்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "நீதிமன்றம் ஒருவரை வர வேண்டும் என்று அனுப்பும் அதிகாரப்பூர்வ கடிதம்",
+        "எடுத்துக்காட்டு": "நீதிமன்றத்தில் இருந்து சம்மன் வந்தது.",
+        "ஆவண பொருள்": "சம்மன் புறக்கணித்தால் கைது ஆணை வரலாம்.",
+        "கவனிக்க": "சம்மன் வந்தால் வழக்கறிஞரிடம் உடனே ஆலோசியுங்கள்.",
+    },
+    "வாரிசு": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "ஒருவர் இறந்த பிறகு அவரது சொத்தை பெறும் உரிமையுள்ள நபர்",
+        "எடுத்துக்காட்டு": "அவரது மகன்கள் வாரிசுகளாக அறிவிக்கப்பட்டனர்.",
+        "ஆவண பொருள்": "வாரிசு சான்றிதழ் இல்லாமல் இறந்தவரின் சொத்தை கோர முடியாது.",
+    },
+    "பவர் ஆஃப் அட்டர்னி": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "ஒருவர் தன் சார்பாக வேறொருவர் சட்டரீதியாக செயல்பட அனுமதிக்கும் ஆவணம்",
+        "எடுத்துக்காட்டு": "வெளிநாட்டில் இருப்பதால் தன் சகோதரருக்கு பவர் ஆஃப் அட்டர்னி கொடுத்தார்.",
+        "ஆவண பொருள்": "பவர் ஆஃப் அட்டர்னி நோட்டரி சான்றளிக்கப்பட்டிருக்க வேண்டும்.",
+    },
+    "பிரிவினை": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "கூட்டு சொத்தை தனித்தனியாக பிரிப்பது — partition என்று ஆங்கிலத்தில் சொல்வார்கள்",
+        "எடுத்துக்காட்டு": "நிலத்தை சகோதரர்களிடையே பிரிவினை செய்தனர்.",
+        "ஆவண பொருள்": "பிரிவினை ஆவணம் பதிவு செய்தால் மட்டுமே சட்டரீதியாக செல்லும்.",
+    },
+    "சொத்து": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "ஒருவருக்கு சொந்தமான நிலம், வீடு, பணம் அல்லது பொருள்",
+        "எடுத்துக்காட்டு": "இந்த சொத்தை அவர் பட்டாவில் பதிவு செய்துள்ளார்.",
+        "ஆவண பொருள்": "சொத்தின் மீது வரி கட்டவும், பதிவு செய்யவும் கட்டாயம்.",
+    },
+    "தொகை": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "பணத்தின் அளவு",
+        "எடுத்துக்காட்டு": "மொத்த தொகை 1,00,000 ரூபாய்.",
+        "ஆவண பொருள்": "தொகையை எண்ணிலும் எழுத்திலும் குறிக்கவும்.",
+    },
+    "விலை": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "ஒரு பொருள் அல்லது சொத்தை வாங்க செலுத்தும் பணம்",
+        "எடுத்துக்காட்டு": "இந்த வீட்டின் விலை 50 லட்சம்.",
+        "ஆவண பொருள்": "பத்திரத்தில் சொத்தின் விலை குறைவாக போட்டால் சட்ட சிக்கல் வரும்.",
+    },
+    "குறிப்பு": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "கவனிக்க வேண்டிய சிறப்பு தகவல்",
+        "எடுத்துக்காட்டு": "குறிப்பு: மேற்கண்ட விவரங்கள் சரியானவை.",
+        "ஆவண பொருள்": "ஆவணத்தில் குறிப்பு என்று வந்தால் அதை கவனமாக படிக்கவும்.",
+    },
+    "ஆவணம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "எழுத்தில் தயாரிக்கப்பட்ட சட்டரீதியான அல்லது முக்கியமான காகிதம்",
+        "எடுத்துக்காட்டு": "அனைத்து ஆவணங்களையும் பாதுகாப்பாக வைத்திருங்கள்.",
+        "ஆவண பொருள்": "ஆவணங்களை இழந்தால் அரசு அலுவலகத்தில் நகல் வாங்கலாம்.",
+    },
+    "சட்டம்": {
+        "pos": "பெயர்ச்சொல்",
+        "பொருள்": "அரசு இயற்றும் விதிகள் மற்றும் கட்டளைகள்",
+        "எடுத்துக்காட்டு": "இந்த ஒப்பந்தம் இந்திய சட்டத்தின்படி செல்லுபடியாகும்.",
+        "ஆவண பொருள்": "சட்டப்படி செய்யப்படாத ஒப்பந்தங்கள் செல்லாது.",
+    },
+    "நேரில்": {
+        "pos": "வினையடை",
+        "பொருள்": "நேரடியாக — தனிப்பட்ட முறையில் வந்து என்று பொருள்",
+        "எடுத்துக்காட்டு": "விண்ணப்பதாரர் நேரில் வந்து ஆவணங்களை சமர்ப்பிக்க வேண்டும்.",
+        "ஆவண பொருள்": "'நேரில் ஆஜராக வேண்டும்' என்றால் நீங்களே போக வேண்டும், பிறரை அனுப்ப முடியாது.",
+    },
+
 }
 
 # Aliases — some words may appear with slight variations
@@ -542,11 +683,109 @@ def src_mymemory(word: str):
     except: pass
     return None
 
+def src_libre(word: str):
+    """LibreTranslate — free, open source"""
+    for url in ["https://libretranslate.com/translate",
+                "https://translate.argosopentech.com/translate"]:
+        try:
+            r = requests.post(url,
+                json={"q": word, "source": "ta", "target": "en", "format": "text"},
+                timeout=4)
+            if r.status_code == 200:
+                t = r.json().get("translatedText","")
+                if t and not is_transliteration(t) and len(t.strip()) > 1:
+                    return t.strip()
+        except: pass
+    return None
+
+def src_wiktionary_ta(word: str):
+    """Tamil Wiktionary — dictionary definition in Tamil"""
+    try:
+        url = f"https://ta.wiktionary.org/api/rest_v1/page/definition/{requests.utils.quote(word)}"
+        r = requests.get(url, timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            for key in data:
+                entries = data[key]
+                if isinstance(entries, list) and entries:
+                    raw = entries[0].get("definitions",[{}])[0].get("definition","")
+                    clean = re.sub(r"<[^>]+>","",raw).strip()
+                    if clean and len(clean) > 3:
+                        return clean
+    except: pass
+    return None
+
+def src_wiktionary_en(word: str):
+    """English Wiktionary — Tamil section"""
+    try:
+        url = f"https://en.wiktionary.org/api/rest_v1/page/definition/{requests.utils.quote(word)}"
+        r = requests.get(url, timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            for key in data:
+                for entry in data[key]:
+                    if entry.get("language","").lower() in ("tamil","ta"):
+                        defns = entry.get("definitions",[])
+                        if defns:
+                            raw = defns[0].get("definition","")
+                            clean = re.sub(r"<[^>]+>","",raw).strip()
+                            if clean: return clean
+    except: pass
+    return None
+
 def src_google(word: str):
+    """Google Translate via deep-translator"""
     try:
         from deep_translator import GoogleTranslator
         t = GoogleTranslator(source="ta", target="en").translate(word)
         if t and not is_transliteration(t): return t.strip()
+    except: pass
+    return None
+
+def src_microsoft(word: str):
+    """Microsoft Translator via deep-translator"""
+    try:
+        from deep_translator import MicrosoftTranslator
+        t = MicrosoftTranslator(source="ta", target="en").translate(word)
+        if t and not is_transliteration(t): return t.strip()
+    except: pass
+    return None
+
+def src_linguee(word: str):
+    """MyMemory with different email for higher quota"""
+    try:
+        r = requests.get("https://api.mymemory.translated.net/get",
+            params={"q": word, "langpair": "ta|en", "de": "tamil_reader@example.com"},
+            timeout=4)
+        if r.status_code == 200:
+            t = r.json().get("responseData",{}).get("translatedText","")
+            if t and not is_transliteration(t) and len(t.strip()) > 1:
+                return t.strip()
+    except: pass
+    return None
+
+def src_apertium(word: str):
+    """Apertium — open source translation"""
+    try:
+        r = requests.get("https://www.apertium.org/apy/translate",
+            params={"q": word, "langpair": "ta|en"}, timeout=4)
+        if r.status_code == 200:
+            t = r.json().get("responseData",{}).get("translatedText","")
+            if t and not is_transliteration(t) and len(t.strip()) > 1:
+                return t.strip()
+    except: pass
+    return None
+
+def src_wtamil_to_en(word: str):
+    """Wikipedia Tamil page extract — gets Tamil definition"""
+    try:
+        r = requests.get(
+            f"https://ta.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(word)}",
+            timeout=4)
+        if r.status_code == 200:
+            extract = r.json().get("extract","")
+            if extract and len(extract) > 10:
+                return extract[:300]
     except: pass
     return None
 
@@ -570,7 +809,23 @@ def lookup(word: str, doc_text: str = "") -> dict:
     ctx      = find_context(doc_text, w) or find_context(doc_text, root)
     online   = None
     if not dict_res:
-        online = src_mymemory(w) or src_mymemory(root) or src_google(w)
+        # Try 8 free sources in cascade — stop at first real result
+        for src_fn, arg in [
+            (src_mymemory,   w),
+            (src_mymemory,   root),
+            (src_wiktionary_ta, w),
+            (src_wiktionary_ta, root),
+            (src_libre,      w),
+            (src_wiktionary_en, w),
+            (src_apertium,   w),
+            (src_google,     w),
+            (src_linguee,    w),
+            (src_wtamil_to_en, w),
+        ]:
+            result = src_fn(arg)
+            if result:
+                online = result
+                break
     return {
         "word": word, "clean": w, "morph": morph, "root": root,
         "dict": dict_res, "online": online, "context": ctx,
@@ -755,7 +1010,17 @@ with t_reader:
               </div>
             </div>""", unsafe_allow_html=True)
 
-        st.caption("📚 உள்ளமைக்கப்பட்ட தமிழ் அகராதி + MyMemory + Google Translate | 100% இலவசம்")
+        st.caption(f"📚 {APP_VERSION} | 100% இலவசம்")
+
+        with st.expander("🛠️ Debug — பொருள் தேட பயன்படும் வழி"):
+            if w and is_tamil(clean_word(w)):
+                cw = clean_word(w)
+                st.code(f"உள்ளீடு: {repr(w)}\nசுத்தமான சொல்: {repr(cw)}\nவேர்ச்சொல்: {repr(res['root'])}", language="text")
+                in_dict = dict_lookup(res['root']) or dict_lookup(cw)
+                st.write("📚 அகராதியில்:", "✅ கிடைத்தது" if in_dict else "❌ இல்லை")
+                st.write("🌐 ஆன்லைன்:", "✅ கிடைத்தது" if res.get('online') else "❌ இல்லை")
+            else:
+                st.write("சொல் தேடவில்லை")
 
 with t_deploy:
     st.markdown("## 🚀 GitHub → Streamlit Cloud")
