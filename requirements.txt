@@ -12,3 +12,9 @@ streamlit
 easyocr
 googletrans==4.0.0-rc1
 pillow
+streamlit
+pytesseract
+pdf2image
+pillow
+deep-translator
+pandas
