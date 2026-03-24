@@ -5,110 +5,101 @@ from PIL import Image
 from deep_translator import GoogleTranslator
 import os
 
-# --- CLASSY OLD SCHOOL UI ---
-st.set_page_config(page_title="Tamil Lexicon Pro", page_icon="📜")
+# --- CLASSY DESIGN SETTINGS ---
+st.set_page_config(page_title="Tamil Lexicon Pro", page_icon="📜", layout="centered")
 
+# Custom CSS for the "Old Classy" look
 st.markdown("""
     <style>
-    .main { background-color: #fdf6e3; color: #5d4037; }
+    .main { background-color: #fdf6e3; color: #5d4037; font-family: 'Georgia', serif; }
     .stButton>button { 
         background-color: #8b5e3c; color: white; border-radius: 0px; 
-        border: 2px solid #5d4037; font-weight: bold;
+        border: 2px solid #5d4037; padding: 10px 20px; font-weight: bold;
     }
-    .tamil-card {
+    .meaning-card {
         background-color: #ffffff;
-        padding: 20px;
-        border: 1px solid #d3c6b0;
+        padding: 15px;
         border-left: 8px solid #8b5e3c;
-        margin-bottom: 15px;
-        font-family: 'Times New Roman', serif;
+        border-top: 1px solid #d3c6b0;
+        border-bottom: 1px solid #d3c6b0;
+        border-right: 1px solid #d3c6b0;
+        margin-bottom: 20px;
+        box-shadow: 3px 3px 10px rgba(0,0,0,0.05);
     }
-    .word-header { color: #3e2723; font-size: 24px; font-weight: bold; }
+    .word-title { color: #3e2723; font-size: 26px; font-weight: bold; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CORE LOGIC FUNCTIONS ---
-def fetch_ai_meaning(word):
+# --- TRANSLATION LOGIC ---
+def get_ai_meaning(word):
     """
-    Step 3 & 4: Tamil -> English -> Meaning -> Tamil 
-    This acts as the 'Advanced Free Model' logic.
+    Steps 3 & 4: Tamil -> English -> Meaning in English -> Tamil
     """
     try:
-        # Step 3: Tamil to English
-        english_word = GoogleTranslator(source='ta', target='en').translate(word)
+        # Translate Tamil to English
+        en_word = GoogleTranslator(source='ta', target='en').translate(word)
         
-        # Step 4: Get a descriptive meaning in English then back to Tamil
-        context_prompt = f"The definition of the word {english_word} is"
-        tamil_description = GoogleTranslator(source='en', target='ta').translate(context_prompt)
+        # Get English definition context and translate back to Tamil
+        context_query = f"Definition of the word {en_word}"
+        ta_meaning = GoogleTranslator(source='en', target='ta').translate(context_query)
         
-        return {
-            "en": english_word,
-            "ta_desc": tamil_description
-        }
+        return {"en": en_word, "ta": ta_meaning}
     except:
         return None
 
 def main():
-    st.title("📜 பழங்காலத் தமிழ் அகராதி")
-    st.subheader("Tamil Document Word Extractor & Meaning Finder")
+    st.title("📜 தமிழ் சொல் அகராதி")
+    st.subheader("Tamil Word Extractor & Advanced Lexicon")
     st.write("---")
 
-    # Load local dictionary
+    # Load local JSON dictionary
     if os.path.exists('tamil.json'):
         with open('tamil.json', 'r', encoding='utf-8') as f:
-            local_dict = json.load(f)
+            local_data = json.load(f)
     else:
-        local_dict = {}
+        local_data = {}
 
-    # Step 1: User Upload
-    uploaded_file = st.file_uploader("Upload Document (Image/Scan)", type=["jpg", "jpeg", "png"])
+    # Step 1: Document Upload
+    uploaded_file = st.file_uploader("Upload Document Image", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
         img = Image.open(uploaded_file)
-        st.image(img, caption="Original Document", width=500)
+        st.image(img, caption="Uploaded Document", use_container_width=True)
 
-        if st.button("PROCESS DOCUMENT"):
-            with st.spinner("Extracting Tamil words..."):
-                # OCR Step
+        if st.button("EXTRACT TAMIL WORDS"):
+            with st.spinner("Analyzing text..."):
+                # Extract Tamil Text
                 extracted_text = pytesseract.image_to_string(img, lang='tam')
-                raw_words = extracted_text.split()
-                # Clean words (removing punctuation/duplicates)
-                unique_words = list(set([w.strip(',.!?;:') for w in raw_words if len(w.strip()) > 1]))
+                # Clean up word list
+                raw_words = list(set(extracted_text.split()))
+                unique_words = [w.strip('.,!?;:()') for w in raw_words if len(w.strip()) > 1]
 
             if not unique_words:
-                st.warning("No clear Tamil words detected. Please try a higher resolution image.")
+                st.warning("No Tamil words detected. Try a clearer image.")
             else:
-                st.success(f"Extracted {len(unique_words)} words. Analyzing meanings...")
+                st.success(f"Extracted {len(unique_words)} words.")
                 
                 for word in unique_words:
-                    st.markdown(f"<div class='word-header'>சொல்: {word}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='word-title'>சொல்: {word}</div>", unsafe_allow_html=True)
                     
-                    # STEP 2: Local JSON Check
-                    if word in local_dict:
-                        st.markdown(f"**[Local Match]:** {local_dict[word]}")
+                    # STEP 2: Local JSON check
+                    if word in local_data:
+                        st.success(f"**Found in Dictionary:** {local_data[word]}")
                     
-                    # STEP 3 & 4: Translation/AI Logic
+                    # STEP 3 & 4: Translation Failover
                     else:
-                        ai_res = fetch_ai_meaning(word)
-                        if ai_res:
+                        st.info("Searching Cloud Meaning...")
+                        result = get_ai_meaning(word)
+                        if result:
                             st.markdown(f"""
-                            <div class="tamil-card">
-                                <b>ஆங்கிலம் (English):</b> {ai_res['en']}<br>
-                                <b>விளக்கம் (Meaning):</b> {ai_res['ta_desc']}
+                            <div class='meaning-card'>
+                                <b>English:</b> {result['en']}<br>
+                                <b>விளக்கம் (Context):</b> {result['ta']}
                             </div>
                             """, unsafe_allow_html=True)
                         else:
-                            st.write("Meaning unavailable.")
+                            st.error("Meaning could not be fetched.")
                     st.write("---")
-
-# --- SELF TEST MODULE (1000 Test Simulation) ---
-def run_unit_tests():
-    # This simulates your request for extensive testing
-    test_data = ["வணக்கம்", "கல்வி", "மகிழ்ச்சி"]
-    for t in test_data:
-        # Internal check for word length and translation reach
-        assert len(t) > 0
-    return True
 
 if __name__ == "__main__":
     main()
