@@ -1,149 +1,203 @@
 import streamlit as st
 import json, re, io, time
 from datetime import datetime
+from pathlib import Path
+import fitz  # PyMuPDF
+from docx import Document
 from deep_translator import GoogleTranslator
 
 # ══════════════════════════════════════════════════════════════════════
-# 1. GOVERNMENT DATASETS (OFFLINE MODE READY)
+# 1. PAGE CONFIG & THEME
 # ══════════════════════════════════════════════════════════════════════
+st.set_page_config(
+    page_title="தமிழ்நாடு அரசு | Tamil Language Assistant",
+    page_icon="🏛️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-# Official TN Govt / Legal Glossary
-GOVT_GLOSSARY = {
-    "அங்கீகாரம்": {"english": "Approval / Recognition", "govt": "அதிகாரப்பூர்வ ஒப்புதல்", "simple": "அதிகாரிகள் ஒப்புதல் கொடுப்பது", "form": "Used in certificate verification forms"},
-    "நிர்வாகம்": {"english": "Administration", "govt": "ஆட்சிப்பணி / மேலாண்மை", "simple": "அரசு வேலைகளை நடத்துவது", "form": "Found in departmental headers"},
-    "ஒப்பந்தம்": {"english": "Contract / Agreement", "govt": "உடன்படிக்கை", "simple": "இரு தரப்பு உறுதிமொழி", "form": "Standard Lease/Tender documents"},
-    "ஆணை": {"english": "Order / Decree", "govt": "அரசாணை (G.O)", "simple": "அரசு வெளியிடும் உத்தரவு", "form": "G.O. Number section"},
+# Shared Styles for TN Govt Aesthetic
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@300;400;700&family=Noto+Serif+Tamil:wght@400;700&family=Source+Serif+4:wght@400;600&display=swap');
+
+:root {
+  --tn-navy: #003366; --tn-saffron: #e07b00; --tn-red: #8b1a1a;
+  --tn-offwhite: #f5f7fa; --tn-border: #c5cdd8;
 }
 
+.stApp { background: var(--tn-offwhite); font-family: 'Source Serif 4', serif; }
+
+/* Header & Banner */
+.gov-header {
+  background: var(--tn-navy); border-bottom: 4px solid var(--tn-saffron);
+  padding: 15px 30px; display: flex; align-items: center; justify-content: space-between;
+}
+.gov-title { color: white; font-family: 'Noto Serif Tamil'; font-size: 1.5rem; font-weight: 700; }
+
+/* Reader Styles */
+.reader-box {
+  background: white; border: 1px solid var(--tn-border); padding: 25px;
+  height: 60vh; overflow-y: auto; border-radius: 4px; line-height: 2.2;
+}
+.tw {
+  cursor: pointer; border-bottom: 2px solid var(--tn-saffron); padding: 0 2px;
+}
+.tw:hover { background: #fff3cc; color: var(--tn-navy); }
+
+/* Meaning Card */
+.mcard {
+  background: white; border: 1px solid var(--tn-border); border-top: 5px solid var(--tn-red);
+  padding: 20px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.mcard-ta { background: #eaf5ee; border: 1px solid #b8ddc4; padding: 10px; margin: 10px 0; border-radius: 4px; }
+
+/* Ticker */
+.tn-ticker {
+  background: var(--tn-saffron); color: white; padding: 5px 20px; font-size: 0.8rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════════════
-# 2. CORE LOGIC (MODIFIED LOOKUP)
+# 2. DATASETS & LINGUISTICS
 # ══════════════════════════════════════════════════════════════════════
+
+# Tier 2: Official Local Glossary
+OFFICIAL_GLOSSARY = {
+    "அங்கீகாரம்": {"en": "Approval / Recognition", "govt": "அதிகாரப்பூர்வ ஒப்புதல்", "simple": "அதிகாரிகள் ஒப்புதல் கொடுப்பது", "form": "Used in certificate verification"},
+    "நிர்வாகம்": {"en": "Administration", "govt": "ஆட்சிப்பணி / மேலாண்மை", "simple": "அரசு வேலைகளை நடத்துவது", "form": "Found in dept headers"},
+    "ஒப்பந்தம்": {"en": "Contract / Agreement", "govt": "உடன்படிக்கை", "simple": "இரு தரப்பு உறுதிமொழி", "form": "Standard Lease/Tender docs"},
+    "ஆணை": {"en": "Order", "govt": "அரசாணை (G.O)", "simple": "அரசு வெளியிடும் உத்தரவு", "form": "G.O. Number section"},
+    "விண்ணப்பம்": {"en": "Application", "govt": "முறையீடு / மனு", "simple": "உதவி கோரி எழுதும் கடிதம்", "form": "Front page of any form"},
+}
 
 def correct_spelling(word):
-    """Placeholder for spell-check model. Currently returns original."""
-    # Logic: compare with GOVT_GLOSSARY keys using Levenshtein distance
-    return word 
-
-def detect_context(word):
-    """Detects if the word is Legal, General, or Administrative."""
-    if word in GOVT_GLOSSARY: return "⚖️ Legal/Govt"
-    return "📝 General"
-
-def tier2_json(word):
-    """Searches the local official glossary."""
-    return GOVT_GLOSSARY.get(word)
-
-def tier3_chain(word):
-    """Online fallback translation."""
-    try:
-        en = GoogleTranslator(source='ta', target='en').translate(word)
-        return {"english": en, "govt": "N/A", "simple": "General translation", "form": "General use"}
-    except: return None
+    # Simple cleaner
+    return re.sub(r'[^\u0B80-\u0BFF]', '', word).strip()
 
 def smart_lookup(word):
-    """The Tiered Engine requested in Requirement #6."""
     word = correct_spelling(word)
-    context = detect_context(word)
-    
-    # Tiered Search
-    base = tier2_json(word) or tier3_chain(word)
-    
-    if not base:
-        return {"english": "Not found", "govt": "N/A", "simple": "N/A", "form": "N/A"}
+    if not word: return None
 
-    # Add to Audit Log
+    # Tier 2: Internal Glossary
+    if word in OFFICIAL_GLOSSARY:
+        base = OFFICIAL_GLOSSARY[word]
+        base['tier'] = "Tier 2: Official Glossary"
+    else:
+        # Tier 3: Online Translation Fallback
+        try:
+            en = GoogleTranslator(source='ta', target='en').translate(word)
+            base = {"en": en, "govt": "N/A", "simple": "General translation", "form": "N/A", "tier": "Tier 3: Online AI"}
+        except:
+            return None
+
+    # Update Audit Log
     if 'audit_log' not in st.session_state: st.session_state.audit_log = []
-    st.session_state.audit_log.append({
-        "time": datetime.now().strftime("%H:%M:%S"),
-        "word": word,
-        "context": context
-    })
-
-    return {
-        **base,
-        "corrected": word,
-        "context": context,
-    }
+    st.session_state.audit_log.append({"time": datetime.now().strftime("%H:%M"), "word": word})
+    
+    return base
 
 # ══════════════════════════════════════════════════════════════════════
-# 3. UI COMPONENTS (IMPROVED MEANING CARD)
+# 3. FILE EXTRACTION ENGINE
 # ══════════════════════════════════════════════════════════════════════
 
-def render_meaning_card(res):
-    """UI for Requirement #5: Enhanced Meaning Card."""
-    st.markdown(f"""
-    <div style="background:white; border-top:5px solid #8b1a1a; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-        <div style="display:flex; justify-content:space-between;">
-            <span style="color:#b8860b; font-weight:bold; font-size:0.8rem;">{res['context']}</span>
-            <span style="font-size:0.7rem; color:gray;">ID: {res['corrected']}</span>
-        </div>
-        <h2 style="color:#003366; margin-top:5px;">{res['corrected']}</h2>
-        
-        <div style="margin-bottom:15px;">
-            <div style="color:#888; font-size:0.7rem; text-transform:uppercase;">📖 Meaning (English)</div>
-            <div style="font-size:1.2rem; font-weight:bold;">{res['english']}</div>
-        </div>
+def extract_text(file):
+    name = file.name.lower()
+    if name.endswith('.pdf'):
+        doc = fitz.open(stream=file.read(), filetype="pdf")
+        return "\n".join([p.get_text() for p in doc])
+    elif name.endswith('.docx'):
+        doc = Document(io.BytesIO(file.read()))
+        return "\n".join([p.text for p in doc.paragraphs])
+    return file.read().decode("utf-8")
 
-        <div style="background:#f0f4f8; padding:10px; border-radius:5px; margin-bottom:10px;">
-            <div style="color:#003366; font-size:0.7rem; font-weight:bold;">🏛️ Government Usage</div>
-            <div style="font-size:0.9rem;">{res['govt']}</div>
-        </div>
+# ══════════════════════════════════════════════════════════════════════
+# 4. MAIN INTERFACE
+# ══════════════════════════════════════════════════════════════════════
 
-        <div style="background:#fff9e6; padding:10px; border-radius:5px; margin-bottom:10px; border-left:4px solid #e07b00;">
-            <div style="color:#c06800; font-size:0.7rem; font-weight:bold;">🧠 Simple Explanation</div>
-            <div style="font-size:0.9rem;">{res['simple']}</div>
-        </div>
-
-        <div style="border:1px dashed #ccc; padding:10px; border-radius:5px;">
-            <div style="color:#666; font-size:0.7rem; font-weight:bold;">📋 Form Example</div>
-            <div style="font-size:0.85rem; font-style:italic; color:#444;">{res['form']}</div>
+# Official Header
+st.markdown("""
+<div class="gov-header">
+    <div style="display: flex; align-items: center;">
+        <div style="background:white; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; margin-right:15px;">🏛️</div>
+        <div>
+            <div class="gov-title">தமிழ்நாடு அரசு - தமிழ் உதவியாளர்</div>
+            <div style="color: #aabbd4; font-size: 0.8rem;">GOVERNMENT OF TAMIL NADU • DIGITAL SERVICE</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    <div style="text-align: right; color: white; font-size: 0.8rem;">
+        Official Release v3.0<br>Secure Reading Portal
+    </div>
+</div>
+<div class="tn-ticker">📢 அறிவிப்பு: தமிழ் சொற்களை கிளிக் செய்து அரசு விளக்கங்களை அறியலாம். PDF மற்றும் DOCX கோப்புகளை இங்கே பதிவேற்றவும்.</div>
+""", unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════
-# 4. MAIN APP INTEGRATION
-# ══════════════════════════════════════════════════════════════════════
+col_left, col_right = st.columns([7, 3])
 
-# ... (Insert Header and Style definitions from previous turn here) ...
-
-col_reader, col_insights = st.columns([7, 3])
-
-with col_reader:
-    st.subheader("📄 Document Workspace")
-    text_input = st.text_area("Paste Tamil Document or Govt Order:", height=200, placeholder="அங்கீகாரம் வழங்கப்பட்டது...")
+with col_left:
+    uploaded = st.file_uploader("Upload Government Order (PDF, DOCX, TXT)", type=['pdf', 'docx', 'txt'])
     
-    if text_input:
-        words = text_input.split()
-        html_bits = []
+    if uploaded:
+        raw_text = extract_text(uploaded)
+        words = raw_text.split()
+        html_out = ""
         for w in words:
-            # Simple clickable span logic
-            html_bits.append(f'<span class="tw" onclick="window.parent.postMessage({{type:\'streamlit:setComponentValue\', value:\'{w}\'}}, \'*\')">{w}</span>')
-        st.markdown(f'<div class="reader-pane">{" ".join(html_bits)}</div>', unsafe_allow_html=True)
+            clean = correct_spelling(w)
+            if clean:
+                html_out += f'<span class="tw" onclick="window.parent.postMessage({{type:\'streamlit:setComponentValue\', value:\'{clean}\'}}, \'*\')">{w}</span> '
+            else:
+                html_out += f'{w} '
+        
+        st.markdown(f'<div class="reader-box">{html_out}</div>', unsafe_allow_html=True)
+    else:
+        st.info("Please upload a file or use the search box on the right.")
 
-with col_insights:
-    st.subheader("🔍 Insights")
-    # Capture word from JS (Requirement 6 Hook)
-    selected_word = st.text_input("Selection", key="word_sync", label_visibility="collapsed")
+with col_right:
+    st.markdown("### 🔍 Word Analysis")
+    # Captures the click from JS
+    selected = st.text_input("Selected Word", key="word_sync", label_visibility="collapsed")
     
-    if selected_word:
-        data = smart_lookup(selected_word)
-        render_meaning_card(data)
-    
-    # Requirement #4: Audit Log (Visible in Sidebar or bottom)
-    with st.expander("📝 Audit Log (Word History)"):
+    if selected:
+        res = smart_lookup(selected)
+        if res:
+            st.markdown(f"""
+            <div class="mcard">
+                <small style="color:var(--tn-saffron); font-weight:bold;">{res['tier']}</small>
+                <h2 style="color:var(--tn-navy); margin-top:0;">{selected}</h2>
+                <hr>
+                <div style="font-size:1.1rem; font-weight:bold;">English: {res['en']}</div>
+                
+                <div class="mcard-ta">
+                    <small style="color:green; font-weight:bold;">🏛️ GOVERNMENT MEANING</small><br>
+                    {res['govt']}
+                </div>
+                
+                <div style="padding:10px; border-left:4px solid var(--tn-saffron); background:#fff9e6; margin-bottom:10px;">
+                    <small style="color:#e07b00; font-weight:bold;">🧠 SIMPLE TAMIL</small><br>
+                    {res['simple']}
+                </div>
+
+                <div style="font-size:0.8rem; color:#666; font-style:italic; border-top:1px dashed #ccc; padding-top:10px;">
+                    <b>Form Usage:</b> {res['form']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Audit Log Display
+    with st.expander("📜 Word Audit Log (History)"):
         if 'audit_log' in st.session_state:
-            for entry in st.session_state.audit_log[-5:]:
-                st.write(f"[{entry['time']}] **{entry['word']}** - {entry['context']}")
+            for entry in reversed(st.session_state.audit_log[-10:]):
+                st.write(f"[{entry['time']}] Viewed: **{entry['word']}**")
 
-# Bridge JS
+# JS BRIDGE
 st.components.v1.html("""
 <script>
     const watcher = new MutationObserver(() => {
         const words = window.parent.document.querySelectorAll('.tw');
         words.forEach(el => {
             el.onclick = () => {
-                const input = window.parent.document.querySelector('input[aria-label="Selection"]');
+                const input = window.parent.document.querySelector('input[aria-label="Selected Word"]');
                 if(input) {
                     input.value = el.innerText.trim();
                     input.dispatchEvent(new Event('input', {bubbles:true}));
