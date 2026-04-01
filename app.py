@@ -1,1568 +1,1038 @@
-import streamlit as st
-import json, re, io, math
-from pathlib import Path
-from collections import Counter
+"""
 
-st.set_page_config(
-    page_title="தமிழ்நாடு அரசு | Tamil Language Assistant",
-    page_icon="🏛️",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+
+import io, re, requests
+import streamlit as st
+from gtts import gTTS
+from PIL import Image, ImageEnhance
+import pdfplumber, pytesseract
+import numpy as np
+
+APP_VERSION = "v10 — 62 words | 10 sources | ZWNJ fix"
+
+st.set_page_config(page_title="தமிழ் ஆவண வாசகன்", page_icon="📜", layout="wide")
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@300;400;500;600;700&family=Noto+Serif+Tamil:wght@400;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
-
-:root {
-  --tn-navy:    #003366;
-  --tn-navy2:   #002244;
-  --tn-blue:    #1a5276;
-  --tn-saffron: #e07b00;
-  --tn-saffron2:#c06800;
-  --tn-green:   #1a6b2e;
-  --tn-red:     #8b1a1a;
-  --tn-gold:    #b8860b;
-  --tn-white:   #ffffff;
-  --tn-offwhite:#f5f7fa;
-  --tn-gray1:   #e8ecf1;
-  --tn-gray2:   #c5cdd8;
-  --tn-gray3:   #7a8a99;
-  --tn-text:    #1a2332;
-  --tn-text2:   #3a4a5a;
-  --tn-border:  #c5cdd8;
-  --tn-success: #1a6b2e;
-  --tn-warn:    #8b5000;
-}
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-.stApp {
-  background: var(--tn-offwhite);
-  font-family: 'Source Serif 4', 'Noto Sans Tamil', Georgia, serif;
-  color: var(--tn-text);
-}
-
-#MainMenu, footer, header, .stDeployButton,
-[data-testid="stToolbar"], [data-testid="stDecoration"] { visibility: hidden !important; display: none !important; }
-
-.gov-topstrip {
-  background: var(--tn-navy2);
-  color: #ccdeff;
-  font-family: 'Noto Sans Tamil', sans-serif;
-  font-size: .76rem;
-  padding: .28rem 1.5rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.gov-topstrip-links { display: flex; gap: 1rem; color: #88aadd; }
-
-.gov-header {
-  background: var(--tn-navy);
-  border-bottom: 4px solid var(--tn-saffron);
-  padding: 0;
-  display: flex;
-  align-items: stretch;
-}
-.gov-header-logo {
-  background: var(--tn-navy2);
-  padding: .7rem 1.4rem;
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  border-right: 2px solid var(--tn-saffron);
-  flex-shrink: 0;
-}
-.gov-emblem {
-  width: 58px; height: 58px;
-  background: var(--tn-saffron);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.6rem;
-  font-family: 'Noto Serif Tamil', serif;
-  color: var(--tn-navy2);
-  font-weight: 700;
-  border: 2px solid #ffcc66;
-}
-.gov-logo-title {
-  font-family: 'Noto Serif Tamil', serif;
-  font-size: 1.1rem; font-weight: 700;
-  color: white; letter-spacing: .02em;
-}
-.gov-logo-sub { font-size: .7rem; color: #aabbd4; letter-spacing: .04em; margin-top: .1rem; }
-.gov-header-center { flex: 1; padding: .7rem 1.4rem; display: flex; align-items: center; }
-.gov-app-title {
-  font-family: 'Noto Serif Tamil', serif;
-  font-size: 1.3rem; font-weight: 700; color: white; letter-spacing: .02em;
-}
-.gov-app-sub { font-size: .78rem; color: #aabbd4; margin-top: .15rem; font-family: 'Noto Sans Tamil', sans-serif; }
-.gov-header-badges {
-  padding: .7rem 1.2rem;
-  display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: .3rem;
-}
-.gov-badge {
-  display: inline-flex; align-items: center; gap: .3rem;
-  font-size: .68rem; background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.2); color: #ccdeff;
-  padding: .18rem .6rem; border-radius: 2px;
-  font-family: 'Noto Sans Tamil', sans-serif;
-}
-.gov-badge-dot { width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block; }
-
-.gov-nav {
-  background: var(--tn-blue);
-  border-bottom: 1px solid var(--tn-navy2);
-  padding: 0 1.5rem;
-  display: flex; gap: 0; align-items: center;
-}
-.gov-nav-item {
-  color: #c8daee; font-size: .8rem;
-  font-family: 'Noto Sans Tamil', sans-serif;
-  padding: .55rem 1rem; cursor: pointer;
-  border-bottom: 3px solid transparent;
-  text-decoration: none; letter-spacing: .02em; white-space: nowrap;
-}
-.gov-nav-item:hover { color: white; background: rgba(255,255,255,.08); }
-.gov-nav-item.active { color: white; border-bottom-color: var(--tn-saffron); font-weight: 500; }
-.gov-nav-sep { color: rgba(255,255,255,.2); padding: 0 .1rem; font-size: .7rem; }
-
-.gov-breadcrumb {
-  background: var(--tn-white); border-bottom: 1px solid var(--tn-border);
-  padding: .4rem 1.5rem; font-size: .73rem; color: var(--tn-gray3);
-  font-family: 'Noto Sans Tamil', sans-serif;
-  display: flex; align-items: center; gap: .4rem;
-}
-.gov-bc-link { color: var(--tn-blue); }
-
-.tn-ticker {
-  background: var(--tn-saffron); color: var(--tn-navy2);
-  font-family: 'Noto Sans Tamil', sans-serif; font-size: .78rem;
-  padding: .22rem 1.5rem; overflow: hidden; white-space: nowrap;
-  display: flex; align-items: center; gap: .6rem;
-}
-.tn-ticker-label {
-  background: var(--tn-navy); color: #ffcc66;
-  padding: .1rem .5rem; border-radius: 1px;
-  font-size: .7rem; font-weight: 600; flex-shrink: 0; letter-spacing: .03em;
-}
-.tn-ticker-content { animation: ticker 50s linear infinite; display: inline-block; }
-@keyframes ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-60%)} }
-
-.gov-sidebar-head {
-  background: var(--tn-gray1); border-left: 4px solid var(--tn-navy);
-  padding: .5rem .9rem; font-size: .74rem; font-weight: 600; color: var(--tn-navy);
-  font-family: 'Noto Sans Tamil', sans-serif;
-  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 0;
-}
-.gov-sidebar-body { padding: .6rem .5rem; border-bottom: 1px solid var(--tn-gray1); }
-.gov-stat-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: .3rem .2rem; border-bottom: 1px dashed var(--tn-gray1); font-size: .75rem;
-}
-.gov-stat-label { color: var(--tn-text2); font-family: 'Noto Sans Tamil', sans-serif; }
-.gov-stat-val { color: var(--tn-navy); font-weight: 600; font-family: 'Noto Sans Tamil', sans-serif; }
-.gov-infobox {
-  background: #e8f0fa; border: 1px solid #b8cce8; border-left: 4px solid var(--tn-navy);
-  padding: .5rem .7rem; font-size: .74rem; color: var(--tn-blue);
-  font-family: 'Noto Sans Tamil', sans-serif; line-height: 1.55; margin: .4rem 0;
-}
-.gov-warnbox {
-  background: #fef3e2; border-left: 4px solid var(--tn-saffron);
-  padding: .45rem .7rem; font-size: .73rem; color: var(--tn-warn);
-  font-family: 'Noto Sans Tamil', sans-serif; margin: .4rem 0;
-}
-
-.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; margin-bottom:.9rem; }
-.stat-box {
-  background: var(--tn-white); border: 1px solid var(--tn-border);
-  border-top: 3px solid var(--tn-navy); padding: .5rem .5rem; text-align: center;
-}
-.stat-num { font-family:'Noto Serif Tamil',serif; font-size:1.25rem; font-weight:700; color:var(--tn-navy); display:block; }
-.stat-lbl { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; }
-
-.gov-doc-card {
-  background: var(--tn-white); border: 1px solid var(--tn-border);
-  border-top: 3px solid var(--tn-saffron);
-}
-.gov-doc-titlebar {
-  background: var(--tn-gray1); border-bottom: 1px solid var(--tn-border);
-  padding: .45rem 1rem; display: flex; align-items: center; justify-content: space-between;
-}
-.gov-doc-filename { font-family:'Noto Sans Tamil',sans-serif; font-size:.78rem; color:var(--tn-navy); font-weight:600; }
-.gov-doc-meta { font-size:.68rem; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; }
-.gov-doc-body { padding:1rem 1.4rem; max-height:60vh; overflow-y:auto; }
-
-.doc-content { font-family:'Noto Sans Tamil',sans-serif; font-size:1.05rem; line-height:2.2; color:var(--tn-text); }
-.doc-para { margin-bottom:1rem; text-align:justify; }
-.doc-heading {
-  font-family:'Noto Serif Tamil',serif; font-size:1.12rem; font-weight:700; color:var(--tn-navy);
-  background:var(--tn-gray1); border-left:4px solid var(--tn-saffron);
-  padding:.4rem .8rem; margin:1.1rem 0 .5rem;
-}
-.doc-list-item { padding:.15rem 0 .15rem 1.2rem; position:relative; }
-.doc-list-item::before { content:'▸'; position:absolute; left:0; color:var(--tn-saffron); font-size:.8rem; top:.3rem; }
-
-.tw {
-  cursor:pointer; border-bottom:2px solid var(--tn-saffron); color:var(--tn-text);
-  padding:0 1px; transition:background .12s,color .12s; display:inline;
-}
-.tw:hover { background:#fff3cc; color:var(--tn-navy); border-bottom-color:var(--tn-navy); }
-.tw.active { background:#ffeaa0; color:var(--tn-navy2); border-bottom:2.5px solid var(--tn-navy); font-weight:600; }
-
-.gov-meaning-head {
-  background: var(--tn-navy); color:white;
-  padding:.65rem 1rem; font-family:'Noto Sans Tamil',sans-serif;
-  font-size:.76rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em;
-  display:flex; align-items:center; gap:.5rem;
-  border-bottom:3px solid var(--tn-saffron);
-}
-.mcard { border:1px solid var(--tn-border); overflow:hidden; margin-bottom:.7rem; }
-.mcard-word-bar { background:var(--tn-navy); padding:.8rem 1rem; text-align:center; }
-.mcard-word { font-family:'Noto Serif Tamil',serif; font-size:2rem; font-weight:700; color:white; display:block; }
-.mcard-body { padding:.85rem 1rem; }
-.tier-badge {
-  display:inline-flex; align-items:center; gap:.3rem;
-  font-size:.67rem; padding:.18rem .6rem; border-radius:2px; margin-bottom:.7rem;
-  font-family:'Noto Sans Tamil',sans-serif; font-weight:500; letter-spacing:.03em;
-}
-.t2{background:#d4edda;color:#155724;border:1px solid #b8ddc4}
-.t3{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
-.t4{background:#e2d9f3;color:#432874;border:1px solid #c8b8e8}
-.tn{background:#f8d7da;color:#721c24;border:1px solid #f5c2c7}
-.mcard-sec-lbl {
-  font-size:.65rem; text-transform:uppercase; letter-spacing:.07em; color:var(--tn-gray3);
-  font-family:'Noto Sans Tamil',sans-serif; margin:.55rem 0 .18rem;
-  display:flex; align-items:center; gap:.3rem;
-}
-.mcard-sec-lbl::after { content:''; flex:1; height:1px; background:var(--tn-gray1); }
-.mcard-en { font-size:1.2rem; font-weight:600; color:var(--tn-navy); font-family:'Source Serif 4',serif; }
-.mcard-ta {
-  font-family:'Noto Sans Tamil',sans-serif; font-size:.92rem; color:var(--tn-green);
-  background:#eaf5ee; border:1px solid #b8ddc4; padding:.32rem .6rem; margin-top:.3rem;
-}
-.mcard-def {
-  font-size:.86rem; color:var(--tn-text2); line-height:1.6;
-  background:var(--tn-offwhite); border:1px solid var(--tn-gray1);
-  padding:.45rem .6rem; margin-top:.3rem; font-family:'Source Serif 4',serif;
-}
-.mcard-ex { font-size:.76rem; color:var(--tn-gray3); border-top:1px dashed var(--tn-gray1); padding-top:.45rem; margin-top:.45rem; font-family:'Noto Sans Tamil',sans-serif; }
-.panel-idle { padding:2rem 1rem; text-align:center; }
-.panel-idle-icon { font-size:2rem; margin-bottom:.6rem; }
-.panel-idle-text { font-size:.8rem; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; line-height:1.6; font-style:italic; }
-.hist-label { font-size:.66rem; text-transform:uppercase; letter-spacing:.07em; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; margin-bottom:.35rem; }
-.hist-chip {
-  display:inline-block; font-family:'Noto Sans Tamil',sans-serif; font-size:.8rem;
-  padding:.16rem .5rem; margin:2px; background:var(--tn-offwhite);
-  border:1px solid var(--tn-border); color:var(--tn-navy); cursor:pointer;
-}
-.hist-chip:hover { background:var(--tn-navy); color:white; }
-.gov-search-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--tn-navy); font-family:'Noto Sans Tamil',sans-serif; font-weight:600; margin-bottom:.35rem; }
-
-.gov-upload-title {
-  font-size:.76rem; font-weight:600; color:var(--tn-navy);
-  font-family:'Noto Sans Tamil',sans-serif; text-transform:uppercase; letter-spacing:.05em;
-  margin-bottom:.5rem; display:flex; align-items:center; gap:.4rem;
-}
-.gov-upload-title::before { content:''; display:inline-block; width:3px; height:13px; background:var(--tn-saffron); border-radius:1px; }
-
-.sum-card {
-  background: var(--tn-white); border: 1px solid var(--tn-border);
-  border-top: 3px solid var(--tn-green);
-  margin-bottom: .8rem;
-}
-.sum-titlebar {
-  background: var(--tn-green); color: white;
-  padding: .5rem 1rem; font-family:'Noto Sans Tamil',sans-serif;
-  font-size: .76rem; font-weight: 600; letter-spacing:.04em;
-  display: flex; align-items:center; justify-content:space-between;
-}
-.sum-body {
-  padding: 1rem 1.4rem;
-  font-family:'Noto Sans Tamil',sans-serif; font-size:1rem;
-  line-height: 2.1; color: var(--tn-text);
-}
-.sum-method-badge {
-  display:inline-flex; align-items:center; gap:.3rem;
-  font-size:.65rem; padding:.15rem .55rem; border-radius:2px;
-  font-family:'Noto Sans Tamil',sans-serif; font-weight:500;
-  background:#e8f5ee; color:#155724; border:1px solid #b8ddc4;
-  margin-bottom:.6rem;
-}
-
-.metrics-panel {
-  background: var(--tn-white); border: 1px solid var(--tn-border);
-  border-top: 3px solid var(--tn-navy); margin-top: .6rem;
-}
-.metrics-head {
-  background: var(--tn-navy2); color: white;
-  padding: .5rem .9rem; font-family:'Noto Sans Tamil',sans-serif;
-  font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em;
-  display:flex; align-items:center; gap:.4rem;
-}
-.metrics-body { padding: .7rem .8rem; }
-.metric-row {
-  display: flex; align-items: center; gap:.6rem;
-  margin-bottom: .6rem; padding-bottom:.6rem;
-  border-bottom: 1px dashed var(--tn-gray1);
-}
-.metric-row:last-child { border-bottom: none; margin-bottom:0; padding-bottom:0; }
-.metric-label {
-  font-size:.7rem; color:var(--tn-text2); font-family:'Noto Sans Tamil',sans-serif;
-  width: 130px; flex-shrink:0; line-height:1.3;
-}
-.metric-label small { display:block; color:var(--tn-gray3); font-size:.62rem; font-style:italic; }
-.metric-bar-wrap { flex:1; height:10px; background:var(--tn-gray1); border-radius:1px; overflow:hidden; }
-.metric-bar { height:100%; border-radius:1px; transition:width .6s ease; }
-.bar-green  { background: #1a6b2e; }
-.bar-blue   { background: #1a5276; }
-.bar-saffron{ background: #e07b00; }
-.bar-navy   { background: #003366; }
-.bar-red    { background: #8b1a1a; }
-.metric-val {
-  font-size:.75rem; font-weight:600; color:var(--tn-navy);
-  font-family:'Noto Sans Tamil',sans-serif; width:42px; text-align:right;
-}
-.metric-grade {
-  font-size:.65rem; padding:.1rem .38rem; border-radius:2px; font-weight:600;
-  font-family:'Noto Sans Tamil',sans-serif;
-}
-.grade-A { background:#d4edda; color:#155724; border:1px solid #b8ddc4; }
-.grade-B { background:#d1ecf1; color:#0c5460; border:1px solid #bee5eb; }
-.grade-C { background:#fff3cd; color:#856404; border:1px solid #ffc107; }
-.grade-D { background:#f8d7da; color:#721c24; border:1px solid #f5c2c7; }
-.metrics-summary-box {
-  background: var(--tn-offwhite); border: 1px solid var(--tn-gray1);
-  border-left: 4px solid var(--tn-saffron);
-  padding: .55rem .8rem; margin-top: .5rem;
-  font-size: .74rem; color: var(--tn-text2);
-  font-family:'Noto Sans Tamil',sans-serif; line-height:1.6;
-}
-.overall-score-box {
-  background: var(--tn-navy); color:white; padding:.6rem .9rem;
-  display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:.6rem;
-}
-.overall-score-num {
-  font-size:2rem; font-weight:700;
-  font-family:'Noto Serif Tamil',serif;
-}
-.overall-score-label { font-size:.68rem; color:#aabbd4; font-family:'Noto Sans Tamil',sans-serif; margin-top:.1rem; }
-.overall-score-grade { font-size:1.1rem; font-weight:700; padding:.3rem .7rem; border-radius:2px; }
-.keywords-box {
-  background:var(--tn-offwhite); border:1px solid var(--tn-gray1);
-  padding:.5rem .7rem; margin-top:.4rem;
-}
-.kw-label { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; margin-bottom:.35rem; }
-.kw-chip {
-  display:inline-block; font-family:'Noto Sans Tamil',sans-serif; font-size:.72rem;
-  padding:.1rem .4rem; margin:2px; border-radius:1px;
-  background:#e8f0fa; border:1px solid #b8cce8; color:var(--tn-navy);
-}
-.kw-chip.in-summary { background:#d4edda; border-color:#b8ddc4; color:#155724; }
-
-.stTextInput>div>div>input, .stTextArea>div>div>textarea {
-  font-family:'Noto Sans Tamil',sans-serif !important; font-size:.98rem !important;
-  border:1.5px solid var(--tn-border) !important; border-radius:2px !important;
-  background:var(--tn-white) !important; color:var(--tn-text) !important;
-}
-.stTextInput>div>div>input:focus, .stTextArea>div>div>textarea:focus {
-  border-color:var(--tn-navy) !important;
-  box-shadow:0 0 0 2px rgba(0,51,102,.15) !important;
-}
-.stButton>button {
-  background:var(--tn-navy) !important; color:white !important;
-  border:none !important; border-radius:2px !important;
-  font-family:'Noto Sans Tamil',sans-serif !important;
-  font-size:.8rem !important; letter-spacing:.04em !important;
-  padding:.42rem 1rem !important; width:100%; font-weight:500 !important;
-}
-.stButton>button:hover { background:var(--tn-blue) !important; }
-.stSelectbox>div>div { border-radius:2px !important; }
-.stFileUploader>div { background:rgba(0,51,102,.03) !important; border:2px dashed var(--tn-navy) !important; border-radius:2px !important; }
-.stTabs [data-baseweb="tab-list"] { background:var(--tn-gray1); border-bottom:2px solid var(--tn-border); gap:0; }
-.stTabs [data-baseweb="tab"] { font-family:'Noto Sans Tamil',sans-serif; font-size:.78rem; color:var(--tn-text2); padding:.5rem 1.1rem; border-bottom:3px solid transparent; letter-spacing:.02em; }
-.stTabs [aria-selected="true"] { color:var(--tn-navy) !important; border-bottom-color:var(--tn-saffron) !important; background:white !important; font-weight:600 !important; }
-::-webkit-scrollbar { width:5px; }
-::-webkit-scrollbar-track { background:var(--tn-gray1); }
-::-webkit-scrollbar-thumb { background:var(--tn-gray2); border-radius:2px; }
-
-.gov-footer {
-  background:var(--tn-navy2); color:#8899aa;
-  padding:.85rem 1.5rem; font-size:.7rem;
-  font-family:'Noto Sans Tamil',sans-serif;
-  display:flex; justify-content:space-between; align-items:center;
-  border-top:3px solid var(--tn-saffron); margin-top:1rem;
-}
-.gov-footer-links { display:flex; gap:1rem; }
-.gov-footer-links a { color:#6688aa; text-decoration:none; }
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
+.stApp{background:#f2ede6;}
+.hdr{background:#0f172a;border-left:5px solid #d4a843;border-radius:14px;padding:1.5rem 2rem;margin-bottom:1.3rem;}
+.hdr h1{color:#f8ecd4;font-size:1.6rem;font-weight:600;margin:0 0 .2rem;}
+.hdr p{color:#a89880;font-size:.87rem;margin:0;}
+.docbox{background:#fffef8;border:1px solid #ddd0b8;border-radius:12px;padding:1.5rem 1.9rem;
+font-family:'Noto Sans Tamil','IBM Plex Sans',sans-serif;font-size:1.1rem;line-height:2.5;
+color:#111;white-space:pre-wrap;word-break:break-word;max-height:520px;overflow-y:auto;}
+.mcard{background:#fff;border-radius:14px;border:1px solid #e2d8c8;
+box-shadow:0 4px 18px rgba(0,0,0,.06);padding:1.3rem 1.5rem;margin-top:.2rem;}
+.mword{font-family:'Noto Sans Tamil',sans-serif;font-size:1.6rem;font-weight:600;color:#0f172a;margin-bottom:.1rem;}
+.grammar-bar{display:flex;flex-wrap:wrap;gap:8px;margin:.6rem 0 1rem;
+padding:.7rem .9rem;background:#f8f4ff;border-radius:10px;border:1px solid #e0d0ff;}
+.g-chip{display:inline-flex;flex-direction:column;align-items:center;
+border-radius:8px;padding:5px 12px;min-width:70px;}
+.g-lbl{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;}
+.g-val{font-family:'Noto Sans Tamil',sans-serif;font-size:.97rem;font-weight:600;}
+.c-root{background:#fff3e0;border:1px solid #ffd08a;}
+.c-root .g-lbl{color:#8a5000;} .c-root .g-val{color:#5a3000;}
+.c-sfx{background:#e8f4ff;border:1px solid #90c8ff;}
+.c-sfx .g-lbl{color:#00478a;} .c-sfx .g-val{color:#003060;}
+.c-pos{background:#eaffea;border:1px solid #90e090;}
+.c-pos .g-lbl{color:#005a00;} .c-pos .g-val{color:#003000;font-size:.82rem;}
+.c-mood{background:#fff0f8;border:1px solid #ffb0d8;}
+.c-mood .g-lbl{color:#7a0040;} .c-mood .g-val{color:#500020;font-size:.82rem;}
+.sec{margin-bottom:.8rem;border-radius:9px;overflow:hidden;}
+.sh{font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;padding:.3rem .75rem;}
+.sb{font-family:'Noto Sans Tamil','IBM Plex Sans',sans-serif;font-size:1rem;line-height:1.95;padding:.65rem .9rem;}
+.s1{background:#fff8e7;border:1px solid #f3d98b;} .s1 .sh{background:#fef0c0;color:#7a5000;} .s1 .sb{color:#3a2a00;}
+.s2{background:#f0f7ff;border:1px solid #b8d8f8;} .s2 .sh{background:#dbeeff;color:#1a4a8a;} .s2 .sb{color:#1a3a6a;font-style:italic;}
+.s3{background:#fdf2ff;border:1px solid #ddb8f8;} .s3 .sh{background:#f0d0ff;color:#4a0080;} .s3 .sb{color:#280050;}
+.s4{background:#f0faf4;border:1px solid #a8dcb8;} .s4 .sh{background:#c8f0d8;color:#1a5a30;} .s4 .sb{color:#1a3a20;}
+.nf{font-size:.92rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:.7rem 1rem;margin-top:.5rem;}
+.slabel{font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#999;margin-bottom:.35rem;}
+.hint{display:inline-block;background:#fef9e7;border:1px solid #fce7a0;border-radius:8px;padding:.4rem .85rem;font-size:.82rem;color:#7a5100;margin-bottom:.85rem;}
+.dc{display:inline-block;font-size:.75rem;font-weight:600;padding:3px 10px;border-radius:20px;background:#e8f4fd;color:#1155aa;margin-bottom:.7rem;}
+.step{background:#fff;border:1px solid #e5dfd4;border-radius:10px;padding:.85rem 1.1rem;margin-bottom:.5rem;font-size:.91rem;line-height:1.65;}
+.num{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;background:#0f172a;color:#d4a843;font-size:11px;font-weight:700;margin-right:7px;}
 </style>
 """, unsafe_allow_html=True)
 
-_TAMIL_RE   = re.compile(r'[\u0B80-\u0BFF]+')
-_PUNC_STRIP = re.compile(r'^[^\u0B80-\u0BFF]+|[^\u0B80-\u0BFF]+$')
 
-def clean_word(w):
-    w = _PUNC_STRIP.sub('', w).strip()
-    return re.sub(r'[\u0B82\u0B83]+$', '', w)
-
-def is_tamil_word(w):
-    cw = clean_word(w)
-    return len(cw) >= 2 and bool(_TAMIL_RE.search(cw))
-
-@st.cache_data(show_spinner=False)
-def load_dict():
-    p = Path(__file__).parent / "tamil.json"
-    if p.exists():
-        with open(p, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-TDICT = load_dict()
-TAMIL_VOWELS     = list("அஆஇஈஉஊஎஏஐஒஓஔ")
-TAMIL_CONSONANTS = list("கசடதபறஞஜஸஷஹணனநமயரலவழளஃ")
-
-def extract_docx(data):
-    from docx import Document
-    doc = Document(io.BytesIO(data))
-    blocks = []
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-        style = para.style.name if para.style else ""
-        if "Heading" in style:
-            blocks.append({"type":"heading","text":text})
-        elif "List" in style:
-            blocks.append({"type":"list","text":text})
-        else:
-            blocks.append({"type":"para","text":text})
-    return blocks
-
-def extract_pdf(data):
-    import fitz
-    doc = fitz.open(stream=data, filetype="pdf")
-    blocks = []
-    for page in doc:
-        for line in page.get_text().splitlines():
-            line = line.strip()
-            if len(line) > 2:
-                blocks.append({"type":"para","text":line})
-    return blocks
-
-def extract_txt(data):
-    for enc in ("utf-8","utf-16","latin-1"):
-        try:
-            text = data.decode(enc); break
-        except Exception:
-            pass
-    else:
-        text = data.decode("utf-8", errors="replace")
-    return [{"type":"para","text":l.strip()} for l in text.splitlines() if l.strip()]
-
-def extract_document(uploaded):
-    data = uploaded.read()
-    name = uploaded.name.lower()
-    try:
-        if name.endswith(".docx"):   return extract_docx(data)
-        elif name.endswith(".pdf"):  return extract_pdf(data)
-        else:                        return extract_txt(data)
-    except Exception as e:
-        st.error(f"Extraction error: {e}"); return []
-
-def tokenize_html(text):
-    parts = []
-    for tok in text.split():
-        if is_tamil_word(tok):
-            safe = clean_word(tok).replace("'","&#39;").replace('"',"&quot;")
-            parts.append(
-                f'<span class="tw" data-word="{safe}" '
-                f'onclick="pickWord(\'{safe}\')" '
-                f'title="கிளிக் செய்யவும்">{tok}</span>'
-            )
-        else:
-            parts.append(tok)
-    return " ".join(parts)
-
-def blocks_to_html(blocks):
-    out = []
-    for b in blocks:
-        txt = tokenize_html(b["text"])
-        if b["type"] == "heading":
-            out.append(f'<div class="doc-heading">{txt}</div>')
-        elif b["type"] == "list":
-            out.append(f'<div class="doc-para doc-list-item">{txt}</div>')
-        else:
-            out.append(f'<div class="doc-para">{txt}</div>')
-    return "\n".join(out)
-
-def tier2_json(word):
-    w = clean_word(word)
-    if w in TDICT:
-        e = TDICT[w]
-        return {"english":e.get("english",""),"tamil":e.get("tamil",""),
-                "example":e.get("example",""),"tier":2,"label":"உள்ளக அகராதி"}
-    for n in (1,2):
-        s = w[:-n]
-        if len(s) >= 2 and s in TDICT:
-            e = TDICT[s]
-            return {"english":e.get("english","")+" (வேர்ச்சொல்)","tamil":e.get("tamil",""),
-                    "example":e.get("example",""),"tier":2,"label":"அகராதி (வேர்)"}
-    return None
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def _dict_api(en_word):
-    import requests
-    SKIP = {"the","a","an","to","of","in","on","at","it","is","be","as","this","that","was","are"}
-    words = [w for w in en_word.lower().split() if w not in SKIP]
-    if not words: return ""
-    try:
-        r = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{words[0]}", timeout=6)
-        if r.status_code == 200:
-            for entry in r.json():
-                for m in entry.get("meanings",[]):
-                    for d in m.get("definitions",[]):
-                        txt = d.get("definition","")
-                        BAD = ("with a comp","used to","(used","an article","a function word",
-                               "expressing","indicates","denoting","refers to")
-                        if txt and not any(txt.lower().startswith(b) for b in BAD) and len(txt)>15:
-                            return txt[:240]
-    except Exception: pass
-    return ""
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def tier3_chain(word):
-    try:
-        from deep_translator import GoogleTranslator
-        en = GoogleTranslator(source="ta", target="en").translate(word)
-        if not en: return None
-        defn = _dict_api(en)
-        ta_defn = ""
-        if defn:
-            try: ta_defn = GoogleTranslator(source="en", target="ta").translate(defn[:200])
-            except Exception: pass
-        return {"english":en,"tamil":ta_defn or "","definition":defn,"example":"","tier":3,"label":"🔗 மொழிபெயர்ப்பு"}
-    except Exception: return None
-
-@st.cache_resource(show_spinner=False)
-def _ml_pipe():
-    try:
-        from transformers import pipeline
-        return pipeline("translation", model="Helsinki-NLP/opus-mt-ta-en", device=-1)
-    except Exception: return None
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def tier4_ml(word):
-    pipe = _ml_pipe()
-    if not pipe: return None
-    try:
-        res = pipe(word, max_length=128)
-        en = res[0].get("translation_text","") if res else ""
-        if not en: return None
-        return {"english":en,"tamil":"","definition":_dict_api(en),"example":"","tier":4,"label":"🤖 நரம்பு வலை"}
-    except Exception: return None
-
-def lookup(word):
-    word = word.strip()
-    if not word: return {"english":"","tamil":"","tier":0,"label":""}
-    r = tier2_json(word)
-    if r: return r
-    r = tier3_chain(word)
-    if r: return r
-    r = tier4_ml(word)
-    if r: return r
-    return {"english":"பொருள் கண்டுபிடிக்கவில்லை","tamil":"Meaning not found",
-            "definition":"","example":"","tier":0,"label":"கண்டுபிடிக்கவில்லை"}
-
-def meaning_card_html(word, r):
-    tier = r.get("tier",0)
-    tcls = {2:"t2",3:"t3",4:"t4"}.get(tier,"tn")
-    en   = r.get("english","—")
-    ta   = r.get("tamil","")
-    defn = r.get("definition","")
-    ex   = r.get("example","")
-    lbl  = r.get("label","")
-
-    ta_sec = (f'<div class="mcard-sec-lbl">தமிழ் விளக்கம்</div>'
-              f'<div class="mcard-ta"> {ta}</div>') if ta else ""
-    def_sec = (f'<div class="mcard-sec-lbl">வரையறை | Definition</div>'
-               f'<div class="mcard-def">{defn}</div>') if defn and defn != en and len(defn)>12 else ""
-    ex_sec = f'<div class="mcard-ex"> {ex}</div>' if ex else ""
-
-    return f"""
-    <div class="mcard">
-      <div class="mcard-word-bar"><span class="mcard-word">{word}</span></div>
-      <div class="mcard-body">
-        <span class="tier-badge {tcls}">{lbl} · நிலை {tier}</span>
-        <div class="mcard-sec-lbl">ஆங்கில பொருள் | English</div>
-        <div class="mcard-en">{en}</div>
-        {ta_sec}{def_sec}{ex_sec}
-      </div>
-    </div>"""
-
-
-def get_tamil_sentences(text):
-    """
-    Split Tamil text into sentence units.
-    For Tamil legal docs, each line/block is a natural sentence unit.
-    Also splits within lines on Tamil + standard punctuation.
-    """
-    line_sents = [l.strip() for l in text.splitlines() if l.strip()]
-    final = []
-    for line in line_sents:
-        sub = re.split(r'[।॥\u0964\u0965\.\!\?;]+', line)
-        for s in sub:
-            s = s.strip()
-            if len(s) > 5:
-                final.append(s)
-    seen, result = set(), []
-    for s in final:
-        if s not in seen:
-            seen.add(s)
-            result.append(s)
-    return result if result else [text.strip()]
-
-def score_sentence_tfidf(sentences):
-    """Score sentences using TF-IDF-like approach for Tamil."""
-    all_words = []
-    sent_words = []
-    for s in sentences:
-        words = [clean_word(w) for w in s.split() if is_tamil_word(w)]
-        sent_words.append(words)
-        all_words.extend(words)
-
-    total_docs = len(sentences)
-    word_doc_freq = Counter()
-    for sw in sent_words:
-        for w in set(sw):
-            word_doc_freq[w] += 1
-
-    total_word_freq = Counter(all_words)
-
-    scores = []
-    for i, sw in enumerate(sent_words):
-        if not sw:
-            scores.append(0.0)
-            continue
-        score = 0.0
-        for w in sw:
-            tf  = sw.count(w) / len(sw)
-            idf = math.log((total_docs + 1) / (word_doc_freq[w] + 1)) + 1
-            score += tf * idf
-        scores.append(score / len(sw))
-    return scores
-
-def score_sentence_position(sentences):
-    """Positional bias: first and last sentences score higher."""
-    n = len(sentences)
-    scores = []
-    for i in range(n):
-        if i == 0 or i == n - 1:
-            scores.append(1.0)
-        elif i < n * 0.25:
-            scores.append(0.7)
-        elif i > n * 0.75:
-            scores.append(0.5)
-        else:
-            scores.append(0.3)
-    return scores
-
-def score_sentence_length(sentences):
-    """Prefer medium-length sentences, penalise very short/long."""
-    scores = []
-    for s in sentences:
-        wc = len(s.split())
-        if 8 <= wc <= 25:
-            scores.append(1.0)
-        elif 5 <= wc < 8:
-            scores.append(0.6)
-        elif wc > 25:
-            scores.append(0.7)
-        else:
-            scores.append(0.3)
-    return scores
-
-def extractive_summarize(text, ratio=0.4, method="hybrid"):
-    """
-    Extractive summarization with three methods:
-      - tfidf    : TF-IDF scoring
-      - position : positional lead-bias
-      - hybrid   : weighted blend
-    Returns (summary_text, selected_indices, all_scores_dict).
-    """
-    sentences = get_tamil_sentences(text)
-    n = len(sentences)
-
-    if n == 0:
-        return text, [], {}
-    if n <= 3:
-        return text, list(range(n)), {}
-
-    # Adaptive: always select at least 3 sentences, never more than n-1
-    n_select = max(3, min(n - 1, round(n * ratio)))
-
-    tfidf_scores    = score_sentence_tfidf(sentences)
-    position_scores = score_sentence_position(sentences)
-    length_scores   = score_sentence_length(sentences)
-
-    if method == "tfidf":
-        final_scores = tfidf_scores
-    elif method == "position":
-        final_scores = position_scores
-    else:  # hybrid
-        final_scores = [
-            0.5 * t + 0.3 * p + 0.2 * l
-            for t, p, l in zip(tfidf_scores, position_scores, length_scores)
-        ]
-
-    ranked = sorted(range(len(sentences)), key=lambda i: final_scores[i], reverse=True)
-    selected = sorted(ranked[:n_select])
-    summary  = " ".join(sentences[i] for i in selected)
-
-    scores_dict = {
-        "tfidf":    tfidf_scores,
-        "position": position_scores,
-        "length":   length_scores,
-        "final":    final_scores,
-    }
-    return summary, selected, scores_dict
-
-def abstractive_summarize_ai(text, length_hint="medium"):
-    """Call Anthropic API to generate a Tamil abstractive summary."""
-    import requests
-
-    length_map = {
-        "short":  "2–3 sentences",
-        "medium": "4–6 sentences",
-        "long":   "8–10 sentences",
-    }
-    length_desc = length_map.get(length_hint, "4–6 sentences")
-
-    prompt = (
-        f"நீங்கள் ஒரு தமிழ் மொழி நிபுணர். கீழே கொடுக்கப்பட்ட தமிழ் ஆவண உரையை "
-        f"படிக்கவும். இந்த உரையில் உள்ள அனைத்து முக்கிய கருத்துக்களையும், "
-        f"தகவல்களையும், நபர்களையும், நிபந்தனைகளையும் உள்ளடக்கிய "
-        f"விரிவான சுருக்கம் எழுதுங்கள். "
-        f"சுருக்கம் {length_desc} இருக்க வேண்டும். "
-        f"சுருக்கம் மட்டும் தமிழில் எழுதுங்கள், வேறு எந்த மொழியிலும் வேண்டாம். "
-        f"முன்னுரை அல்லது 'சுருக்கம்:' என்று தொடங்க வேண்டாம், நேரடியாக எழுதுங்கள்.\n\n"
-        f"உரை:\n{text[:4000]}\n\n"
-        f"சுருக்கம்:"
-    )
-
-    try:
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 1000,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
-        data = resp.json()
-        text_out = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text_out += block["text"]
-        return text_out.strip() if text_out else None
-    except Exception as e:
-        return None
-
-
-def get_ngrams(tokens, n):
-    return Counter(tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1))
-
-def rouge_n(reference_tokens, summary_tokens, n=1):
-    ref_ng = get_ngrams(reference_tokens, n)
-    sum_ng = get_ngrams(summary_tokens, n)
-    if not ref_ng or not sum_ng:
-        return 0.0
-    overlap = sum(min(ref_ng[k], sum_ng[k]) for k in sum_ng)
-    recall  = overlap / sum(ref_ng.values())
-    precision = overlap / sum(sum_ng.values())
-    if precision + recall == 0:
-        return 0.0
-    f1 = 2 * precision * recall / (precision + recall)
-    return round(f1 * 100, 1)
-
-def lcs_length(a, b):
-    m, n = len(a), len(b)
-    dp = [[0]*(n+1) for _ in range(2)]
-    for i in range(1, m+1):
-        for j in range(1, n+1):
-            if a[i-1] == b[j-1]:
-                dp[i%2][j] = dp[(i-1)%2][j-1] + 1
-            else:
-                dp[i%2][j] = max(dp[(i-1)%2][j], dp[i%2][j-1])
-    return dp[m%2][n]
-
-def rouge_l(reference_tokens, summary_tokens):
-    if not reference_tokens or not summary_tokens:
-        return 0.0
-    lcs = lcs_length(reference_tokens, summary_tokens)
-    recall    = lcs / len(reference_tokens)
-    precision = lcs / len(summary_tokens)
-    if precision + recall == 0:
-        return 0.0
-    f1 = 2 * precision * recall / (precision + recall)
-    return round(f1 * 100, 1)
-
-def compression_ratio(original_text, summary_text):
-    orig_wc = len(original_text.split())
-    sum_wc  = len(summary_text.split())
-    if orig_wc == 0:
-        return 0.0
-    ratio = (1 - sum_wc / orig_wc) * 100
-    return round(max(0.0, min(100.0, ratio)), 1)
-
-def keyword_coverage(original_text, summary_text, top_n=15):
-    orig_words = [clean_word(w) for w in original_text.split() if is_tamil_word(w)]
-    sum_words  = set(clean_word(w) for w in summary_text.split() if is_tamil_word(w))
-    if not orig_words:
-        return 0.0, [], []
-    freq = Counter(orig_words)
-    top_kws = [w for w, _ in freq.most_common(top_n) if len(w) > 2]
-    covered = [w for w in top_kws if w in sum_words]
-    score   = round(len(covered) / len(top_kws) * 100, 1) if top_kws else 0.0
-    return score, top_kws, covered
-
-def lexical_diversity(text):
-    words = [clean_word(w) for w in text.split() if is_tamil_word(w)]
-    if len(words) < 3:
-        return 0.0
-    return round(len(set(words)) / len(words) * 100, 1)
-
-def avg_sentence_length(text):
-    sents = get_tamil_sentences(text)
-    if not sents:
-        return 0
-    total = sum(len(s.split()) for s in sents)
-    return round(total / len(sents), 1)
-
-def grade_score(score):
-    if score >= 75: return "A", "grade-A"
-    if score >= 55: return "B", "grade-B"
-    if score >= 35: return "C", "grade-C"
-    return "D", "grade-D"
-
-def evaluate_summary(original_text, summary_text, method_label=""):
-    orig_toks = [clean_word(w) for w in original_text.split() if is_tamil_word(w)]
-    sum_toks  = [clean_word(w) for w in summary_text.split() if is_tamil_word(w)]
-
-    r1  = rouge_n(orig_toks, sum_toks, 1)
-    r2  = rouge_n(orig_toks, sum_toks, 2)
-    rl  = rouge_l(orig_toks, sum_toks)
-    cr  = compression_ratio(original_text, summary_text)
-    kc, top_kws, covered_kws = keyword_coverage(original_text, summary_text)
-    ld_orig = lexical_diversity(original_text)
-    ld_sum  = lexical_diversity(summary_text)
-    asl_sum = avg_sentence_length(summary_text)
-    n_sents_orig = len(get_tamil_sentences(original_text))
-    n_sents_sum  = len(get_tamil_sentences(summary_text))
-
-    overall = round((r1 * 0.3 + r2 * 0.2 + rl * 0.2 + kc * 0.3), 1)
-
-    return {
-        "rouge_1": r1,
-        "rouge_2": r2,
-        "rouge_l": rl,
-        "compression_ratio": cr,
-        "keyword_coverage": kc,
-        "lexical_diversity_orig": ld_orig,
-        "lexical_diversity_sum":  ld_sum,
-        "avg_sent_len": asl_sum,
-        "n_sents_orig": n_sents_orig,
-        "n_sents_sum":  n_sents_sum,
-        "top_keywords": top_kws,
-        "covered_keywords": covered_kws,
-        "overall": overall,
-        "method": method_label,
-    }
-
-def _grade_color(score):
-    if score >= 75: return ("#d4edda","#155724","#b8ddc4","A")
-    if score >= 55: return ("#d1ecf1","#0c5460","#bee5eb","B")
-    if score >= 35: return ("#fff3cd","#856404","#ffc107","C")
-    return ("#f8d7da","#721c24","#f5c2c7","D")
-
-def render_metrics_panel(metrics):
-    if not metrics:
-        return ""
-
-    r1  = metrics["rouge_1"]
-    r2  = metrics["rouge_2"]
-    rl  = metrics["rouge_l"]
-    cr  = metrics["compression_ratio"]
-    kc  = metrics["keyword_coverage"]
-    ld_s = metrics["lexical_diversity_sum"]
-    overall = metrics["overall"]
-    bg_o, fg_o, bd_o, lbl_o = _grade_color(overall)
-
-    bar_colors = {"green":"#1a6b2e","blue":"#1a5276","navy":"#003366","saffron":"#e07b00","red":"#8b1a1a"}
-
-    def row(label, sublabel, val, bar_color_key):
-        pct = min(100, round(val))
-        bg, fg, bd, gl = _grade_color(val)
-        bc = bar_colors.get(bar_color_key, "#003366")
-        return (
-            f'<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px dashed #e8ecf1;">' +
-            f'<div style="font-size:.7rem;color:#3a4a5a;font-family:Noto Sans Tamil,sans-serif;width:130px;flex-shrink:0;line-height:1.3;">' +
-            f'{label}<span style="display:block;color:#7a8a99;font-size:.62rem;font-style:italic">{sublabel}</span></div>' +
-            f'<div style="flex:1;height:10px;background:#e8ecf1;border-radius:1px;overflow:hidden;">' +
-            f'<div style="height:100%;width:{pct}%;background:{bc};border-radius:1px;"></div></div>' +
-            f'<div style="font-size:.75rem;font-weight:600;color:#003366;font-family:Noto Sans Tamil,sans-serif;width:42px;text-align:right;">{val:.1f}%</div>' +
-            f'<span style="font-size:.65rem;padding:.1rem .38rem;border-radius:2px;font-weight:600;font-family:Noto Sans Tamil,sans-serif;background:{bg};color:{fg};border:1px solid {bd};">{gl}</span>' +
-            f'</div>'
-        )
-
-    rows_html = (
-        row("ROUGE-1", "Unigram overlap", r1, "green") +
-        row("ROUGE-2", "Bigram overlap", r2, "blue") +
-        row("ROUGE-L", "Longest common subseq.", rl, "navy") +
-        row("Keyword Coverage", "முக்கிய சொல் உள்ளடக்கம்", kc, "saffron") +
-        row("Lexical Diversity", "சொல் வகை / தனித்தன்மை", ld_s, "red")
-    )
-
-    top_kws = metrics.get("top_keywords", [])
-    covered = set(metrics.get("covered_keywords", []))
-    kw_chips = "".join(
-        f'<span style="display:inline-block;font-family:Noto Sans Tamil,sans-serif;font-size:.72rem;padding:.1rem .4rem;margin:2px;border-radius:1px;' +
-        ('background:#d4edda;border:1px solid #b8ddc4;color:#155724;">' if w in covered else 'background:#e8f0fa;border:1px solid #b8cce8;color:#003366;">') +
-        f'{w}</span>'
-        for w in top_kws[:15]
-    )
-
-    cr_color = "#1a6b2e" if cr >= 50 else ("#e07b00" if cr >= 25 else "#8b1a1a")
-    n_orig = metrics["n_sents_orig"]
-    n_sum  = metrics["n_sents_sum"]
-    asl    = metrics["avg_sent_len"]
-
-    summary_note = (
-        f"சுருக்கம் {n_sum} வாக்கியங்களில் {n_orig} வாக்கியங்களை {cr:.0f}% குறைத்தது. "
-        f"சராசரி வாக்கிய நீளம் {asl:.0f} சொற்கள். "
-        f"முக்கிய சொற்களில் {len(covered)}/{len(top_kws)} உள்ளடக்கப்பட்டுள்ளன."
-    )
-    method_lbl = metrics.get("method", "")
-
-    return (
-        f'<div style="background:#fff;border:1px solid #c5cdd8;border-top:3px solid #003366;margin-top:.6rem;">' +
-        f'<div style="background:#002244;color:white;padding:.5rem .9rem;font-family:Noto Sans Tamil,sans-serif;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">' +
-        f' சுருக்க மதிப்பீடு | Summary Evaluation</div>' +
-        f'<div style="padding:.7rem .8rem;">' +
-        f'<div style="background:#003366;color:white;padding:.6rem .9rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">' +
-        f'<div><div style="font-size:2rem;font-weight:700;font-family:Noto Serif Tamil,serif;">{overall:.0f}</div>' +
-        f'<div style="font-size:.68rem;color:#aabbd4;font-family:Noto Sans Tamil,sans-serif;margin-top:.1rem;">ஒட்டுமொத்த மதிப்பெண் | Overall Score (0–100)</div></div>' +
-        f'<div><span style="font-size:1.1rem;font-weight:700;padding:.3rem .7rem;border-radius:2px;background:{bg_o};color:{fg_o};">{lbl_o}</span>' +
-        f'<div style="font-size:.65rem;color:#aabbd4;margin-top:.3rem;font-family:Noto Sans Tamil,sans-serif;">{method_lbl}</div></div>' +
-        f'</div>' +
-        rows_html +
-        f'<div style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.7rem;font-family:Noto Sans Tamil,sans-serif;color:#3a4a5a;">' +
-        f'<span>அமுக்க விகிதம் | Compression</span>' +
-        f'<span style="font-size:1.1rem;font-weight:700;color:{cr_color};">{cr:.1f}%</span>' +
-        f'<span style="color:#7a8a99;">({n_orig} → {n_sum} வாக்கியங்கள்)</span></div>' +
-        f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;padding:.5rem .7rem;margin-top:.4rem;">' +
-        f'<div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;margin-bottom:.35rem;">🔑 முக்கிய சொற்கள் (பச்சை = சுருக்கத்தில் உள்ளன)</div>' +
-        (kw_chips if kw_chips else '<span style="font-size:.72rem;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;">தமிழ் உரை இல்லை</span>') +
-        f'</div>' +
-        f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;border-left:4px solid #e07b00;padding:.55rem .8rem;margin-top:.5rem;font-size:.74rem;color:#3a4a5a;font-family:Noto Sans Tamil,sans-serif;line-height:1.6;">' +
-        f'{summary_note}</div>' +
-        f'</div></div>'
-    )
-
-for k,v in [("blocks",[]),("sel_word",""),("meaning",None),
-            ("history",[]),("fname",""),("paste_blocks",[]),
-            ("summary_text",""),("summary_metrics",None),
-            ("summary_method",""),("summary_generated",False)]:
-    if k not in st.session_state:
-        st.session_state[k] = v
-
+# ══════════════════════════════════════════════════════════════════════════════
+# MORPHOLOGICAL ENGINE — fixed vowel restoration
+# ══════════════════════════════════════════════════════════════════════════════
+
+# (suffix, tamil_suffix_meaning, grammatical_label)
+MORPHOLOGY = [
+# Conditional
+("யினால்", "நிபந்தனை விகுதி: ஆல்", "நிபந்தனை வினையெச்சம்"),
+("வதினால்", "நிபந்தனை விகுதி: வதால்", "நிபந்தனை வினையெச்சம்"),
+("தினால்", "நிபந்தனை விகுதி: தால்", "நிபந்தனை வினையெச்சம்"),
+("டினால்", "நிபந்தனை விகுதி: டால்", "நிபந்தனை வினையெச்சம்"),
+("றினால்", "நிபந்தனை விகுதி: றால்", "நிபந்தனை வினையெச்சம்"),
+("னினால்", "நிபந்தனை விகுதி: னால்", "நிபந்தனை வினையெச்சம்"),
+("இனால்", "நிபந்தனை விகுதி: இனால்", "நிபந்தனை வினையெச்சம்"),
+("ினால்", "நிபந்தனை விகுதி: னால்", "நிபந்தனை வினையெச்சம்"),
+("னால்", "நிபந்தனை விகுதி: னால்", "நிபந்தனை வினையெச்சம்"),
+("ால்", "நிபந்தனை / கருவி விகுதி", "நிபந்தனை / மூன்றாம் வேற்றுமை"),
+# Passive
+("ப்படுகிறது", "நிகழ்கால செயப்பாட்டு விகுதி", "செயப்பாட்டு வினை — நிகழ் காலம்"),
+("க்கப்படும்", "எதிர்கால செயப்பாட்டு விகுதி", "செயப்பாட்டு வினை — எதிர் காலம்"),
+("ப்படும்", "எதிர்கால செயப்பாட்டு விகுதி", "செயப்பாட்டு வினை — எதிர் காலம்"),
+("ப்பட்டது", "இறந்தகால செயப்பாட்டு விகுதி", "செயப்பாட்டு வினை — இறந்த காலம்"),
+# Past
+("ட்டார்கள்", "இறந்தகால விகுதி: அவர்கள்", "வினைமுற்று — இறந்த காலம்"),
+("ட்டார்", "இறந்தகால விகுதி: அவர்", "வினைமுற்று — இறந்த காலம்"),
+("ட்டான்", "இறந்தகால விகுதி: அவன்", "வினைமுற்று — இறந்த காலம்"),
+("ட்டாள்", "இறந்தகால விகுதி: அவள்", "வினைமுற்று — இறந்த காலம்"),
+("ட்டேன்", "இறந்தகால விகுதி: நான்", "வினைமுற்று — இறந்த காலம்"),
+("னார்கள்", "இறந்தகால விகுதி: அவர்கள்", "வினைமுற்று — இறந்த காலம்"),
+("னார்", "இறந்தகால விகுதி: அவர்", "வினைமுற்று — இறந்த காலம்"),
+("னான்", "இறந்தகால விகுதி: அவன்", "வினைமுற்று — இறந்த காலம்"),
+("னாள்", "இறந்தகால விகுதி: அவள்", "வினைமுற்று — இறந்த காலம்"),
+("தார்", "இறந்தகால விகுதி: அவர்", "வினைமுற்று — இறந்த காலம்"),
+("தான்", "இறந்தகால விகுதி: அவன்", "வினைமுற்று — இறந்த காலம்"),
+("தாள்", "இறந்தகால விகுதி: அவள்", "வினைமுற்று — இறந்த காலம்"),
+# Present
+("கிறார்கள்", "நிகழ்கால விகுதி: அவர்கள்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறார்", "நிகழ்கால விகுதி: அவர்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறான்", "நிகழ்கால விகுதி: அவன்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறாள்", "நிகழ்கால விகுதி: அவள்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறேன்", "நிகழ்கால விகுதி: நான்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறோம்", "நிகழ்கால விகுதி: நாம்", "வினைமுற்று — நிகழ் காலம்"),
+("கிறது", "நிகழ்கால விகுதி: அது", "வினைமுற்று — நிகழ் காலம்"),
+("கின்றான்", "நிகழ்கால விகுதி: அவன்", "வினைமுற்று — நிகழ் காலம்"),
+("கின்றார்", "நிகழ்கால விகுதி: அவர்", "வினைமுற்று — நிகழ் காலம்"),
+("கின்றது", "நிகழ்கால விகுதி: அது", "வினைமுற்று — நிகழ் காலம்"),
+# Future
+("வார்கள்", "எதிர்கால விகுதி: அவர்கள்", "வினைமுற்று — எதிர் காலம்"),
+("வார்", "எதிர்கால விகுதி: அவர்", "வினைமுற்று — எதிர் காலம்"),
+("வான்", "எதிர்கால விகுதி: அவன்", "வினைமுற்று — எதிர் காலம்"),
+("வாள்", "எதிர்கால விகுதி: அவள்", "வினைமுற்று — எதிர் காலம்"),
+("வேன்", "எதிர்கால விகுதி: நான்", "வினைமுற்று — எதிர் காலம்"),
+("வோம்", "எதிர்கால விகுதி: நாம்", "வினைமுற்று — எதிர் காலம்"),
+("பார்", "எதிர்கால விகுதி: அவர்", "வினைமுற்று — எதிர் காலம்"),
+("பான்", "எதிர்கால விகுதி: அவன்", "வினைமுற்று — எதிர் காலம்"),
+# Verbal noun / infinitive
+("வதற்கு", "வினையெச்சம்: நோக்கம்", "வினையெச்சம் — நோக்கம்"),
+("வதால்", "வினையெச்சம்: காரணம்", "வினையெச்சம் — காரணம்"),
+("வதை", "வினையெச்சம்: செயல்", "வினையெச்சம்"),
+("வது", "வினையெச்சம்", "வினையெச்சம் — செயல் பெயர்"),
+# Case suffixes (noun inflection — no vowel restore needed)
+("த்திலிருந்து","இடவேற்றுமை + ஐந்தாம்", "பெயர்ச்சொல் + இடவேற்றுமை"),
+("த்தினால்", "மூன்றாம் வேற்றுமை: ஆல்", "பெயர்ச்சொல் + மூன்றாம் வேற்றுமை"),
+("த்தோடு", "உடனிகழ்ச்சி: உடன்", "பெயர்ச்சொல் + உடனிகழ்ச்சி"),
+("த்தில்", "இடவேற்றுமை: இல்", "பெயர்ச்சொல் + இடவேற்றுமை"),
+("த்தை", "இரண்டாம் வேற்றுமை: ஐ", "பெயர்ச்சொல் + இரண்டாம் வேற்றுமை"),
+("த்தின்", "ஆறாம் வேற்றுமை: இன்", "பெயர்ச்சொல் + ஆறாம் வேற்றுமை"),
+("த்துக்கு", "நான்காம் வேற்றுமை: கு", "பெயர்ச்சொல் + நான்காம் வேற்றுமை"),
+("யிலிருந்து","இடவேற்றுமை + ஐந்தாம்", "பெயர்ச்சொல் + இடவேற்றுமை"),
+("யில்", "இடவேற்றுமை: இல்", "பெயர்ச்சொல் + இடவேற்றுமை"),
+("யை", "இரண்டாம் வேற்றுமை: ஐ", "பெயர்ச்சொல் + இரண்டாம் வேற்றுமை"),
+("யின்", "ஆறாம் வேற்றுமை: இன்", "பெயர்ச்சொல் + ஆறாம் வேற்றுமை"),
+("யிடம்", "இடவேற்றுமை: இடம்", "பெயர்ச்சொல் + இடவேற்றுமை"),
+("யுடன்", "உடனிகழ்ச்சி: உடன்", "பெயர்ச்சொல் + உடனிகழ்ச்சி"),
+("கள்", "பன்மை விகுதி", "பன்மை"),
+("இலிருந்து", "ஐந்தாம் வேற்றுமை", "ஐந்தாம் வேற்றுமை"),
+("இல்", "இடவேற்றுமை: இல்", "இடவேற்றுமை"),
+("உடன்", "உடனிகழ்ச்சி: உடன்", "உடனிகழ்ச்சி"),
+("இருந்து", "ஐந்தாம் வேற்றுமை", "ஐந்தாம் வேற்றுமை"),
+("உடைய", "ஆறாம் வேற்றுமை: உடைய", "ஆறாம் வேற்றுமை"),
+("ஐ", "இரண்டாம் வேற்றுமை", "இரண்டாம் வேற்றுமை"),
+("கு", "நான்காம் வேற்றுமை", "நான்காம் வேற்றுமை"),
+("ஆல்", "மூன்றாம் வேற்றுமை", "மூன்றாம் வேற்றுமை"),
+("ஆக", "நிலை குறிப்பு", "குறிப்பு வினையெச்சம்"),
+("ஆன", "பண்புப்பெயர் விகுதி", "பண்புப்பெயர்"),
+("ஆனது", "வினை பெயர் விகுதி", "வினை பெயர்"),
+("ஆகும்", "எதிர்கால வினைமுற்று", "வினைமுற்று — எதிர் காலம்"),
+("என்று", "மேற்கோள் விகுதி", "மேற்கோள்"),
+("இல்லாமல்", "எதிர்மறை வினையெச்சம்", "எதிர்மறை வினையெச்சம்"),
+]
+
+# Sandhi corrections (apply BEFORE vowel restore)
+SANDHI = [
+("ந்த", "ந்தம்"),
+("ட்ட", "ட்டம்"),
+("க்க", "க்கம்"),
+("ல்ல", "ல்"),
+("ன்ன", "ன்னம்"),
+("ர்த்த", "ர்த்தம்"),
+]
+
+# Suffixes that are NOUN case markers — don't restore vowel for these
+NOUN_SUFFIXES = {
+"த்திலிருந்து","த்தினால்","த்தோடு","த்தில்","த்தை","த்தின்","த்துக்கு",
+"யிலிருந்து","யில்","யை","யின்","யிடம்","யுடன்",
+"கள்","இலிருந்து","இல்","உடன்","இருந்து","உடைய","ஐ","கு","ஆல்",
+"ஆக","ஆன","ஆனது","ஆகும்","என்று","இல்லாமல்",
+}
+
+def restore_verb_root(stem: str) -> str:
+"""Restore verb root vowel after suffix stripping."""
+if not stem:
+return stem
+# Strip trailing nasal/liquid consonant clusters that appear after stem
+if stem.endswith("ின்"):
+stem = stem[:-3]
+elif stem.endswith(("ன்", "ல்", "ர்", "ண்", "ழ்", "ட்", "ற்")):
+stem = stem[:-2]
+# If last character is a bare consonant (0xB95–0xBB9), add ு
+last = stem[-1] if stem else ""
+code = ord(last) if last else 0
+if 0xB95 <= code <= 0xBB9:
+stem = stem + "\u0bc1" # add ு
+return stem
+
+def apply_sandhi(stem: str) -> str:
+for tail, rep in SANDHI:
+if stem.endswith(tail):
+return stem[:-len(tail)] + rep
+return stem
+
+def analyze(word: str) -> dict:
+"""Morphological analysis: returns root, suffix info, POS."""
+w = word
+for suffix, sfx_meaning, pos in MORPHOLOGY:
+if w.endswith(suffix) and len(w) > len(suffix) + 1:
+stem = w[:-len(suffix)]
+# For noun case suffixes → apply sandhi only
+if suffix in NOUN_SUFFIXES:
+root = apply_sandhi(stem)
+else:
+# For verb suffixes → apply sandhi then vowel restore
+root = restore_verb_root(apply_sandhi(stem))
+return {
+"root": root,
+"suffix": suffix,
+"sfx_meaning": sfx_meaning,
+"pos": pos,
+"is_verb": "வினை" in pos,
+"inflected": True,
+}
+# No suffix found — word is in base form
+return {"root": w, "suffix": None, "sfx_meaning": None, "pos": None,
+"is_verb": False, "inflected": False}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DICTIONARY (Tamil→Tamil definitions only)
+# ══════════════════════════════════════════════════════════════════════════════
+D = {
+# ── VERBS ────────────────────────────────────────────────────────────────
+"விரும்பு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒன்றை ஆசைப்படுவது — பிரியமாக நினைப்பது — ஒரு செயலை செய்ய விழைவது",
+"எடுத்துக்காட்டு": "நீங்கள் விரும்பினால் ஒப்பந்தம் ரத்து செய்யலாம். | அவர் இந்த வேலையை விரும்புகிறார்.",
+"ஆவண பொருள்": "'விரும்பினால்' என்று ஆவணத்தில் வந்தால் — 'உங்களுக்கு விருப்பம் இருந்தால்' என்று பொருள். இது கட்டாயமில்லை, தேர்வு மட்டுமே.",
+},
+"செய்": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒரு செயலை நடத்துவது — நிறைவேற்றுவது",
+"எடுத்துக்காட்டு": "ஒப்பந்தம் செய்யப்பட்டது. | அவர் வேலை செய்கிறார்.",
+"ஆவண பொருள்": "'செய்யப்பட்டது' என்றால் அந்த செயல் அதிகாரப்பூர்வமாக முடிக்கப்பட்டது.",
+},
+"கொடு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒருவருக்கு ஒன்றை அளிப்பது — வழங்குவது",
+"எடுத்துக்காட்டு": "நீதிமன்றம் தீர்ப்பு கொடுத்தது.",
+"ஆவண பொருள்": "'கொடுக்கப்படும்' என்றால் அரசு அல்லது நிறுவனம் அதை வழங்கும் என்று உறுதியளிக்கிறது.",
+},
+"பெறு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒன்றை கைக்கொள்வது — கிடைப்பது",
+"எடுத்துக்காட்டு": "அனுமதி பெறப்பட்டது.",
+"ஆவண பொருள்": "'பெறப்பட்டது' என்றால் சட்டரீதியான ஒப்புதல் கிடைத்தது.",
+},
+"வழங்கு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "அளிப்பது — கொடுப்பது. பொதுவாக அரசு அல்லது அதிகாரி கொடுக்கும்போது இந்த வார்த்தை பயன்படும்",
+"எடுத்துக்காட்டு": "அரசு சான்றிதழ் வழங்குகிறது.",
+"ஆவண பொருள்": "'வழங்கப்படும்' என்றால் அரசு கொடுக்கும் என்று அதிகாரப்பூர்வமாக உறுதியளிக்கிறது.",
+},
+"தெரிவி": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒரு தகவலை அறிவிப்பது — சொல்வது — தெரியப்படுத்துவது",
+"எடுத்துக்காட்டு": "விண்ணப்பதாரர் தன் முகவரியை தெரிவிக்க வேண்டும்.",
+"ஆவண பொருள்": "'தெரிவிக்கப்படுகிறது' என்றால் அதிகாரப்பூர்வமாக அறிவிக்கப்படுகிறது.",
+},
+"ஒப்புக்கொள்": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒரு விஷயத்திற்கு தன் சம்மதத்தை தெரிவிப்பது — ஏற்றுக்கொள்வது",
+"எடுத்துக்காட்டு": "இரு தரப்பினரும் இந்த விதிமுறைகளை ஒப்புக்கொண்டனர்.",
+"ஆவண பொருள்": "கையொப்பமிட்டால் எல்லா விதிமுறைகளையும் ஒப்புக்கொண்டதாகும்.",
+},
+"மீறு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒரு கட்டளை அல்லது விதிமுறையை கடப்பது — பின்பற்றாமல் போவது",
+"எடுத்துக்காட்டு": "ஒப்பந்தத்தை மீறினால் வழக்கு தொடரலாம்.",
+"ஆவண பொருள்": "'மீறினால்' என்று வந்தால் — அப்படி செய்தால் சட்ட நடவடிக்கை நடக்கும் என்று எச்சரிக்கை.",
+},
+"கோரு": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒன்றை தர வேண்டும் என்று கேட்பது — உரிமை கோருவது",
+"எடுத்துக்காட்டு": "வாரிசு சொத்தை கோருகிறார்.",
+"ஆவண பொருள்": "'கோரப்பட்டது' என்றால் சட்டரீதியான கோரிக்கை வைக்கப்பட்டது.",
+},
+"நிர்ணயி": {
+"pos": "வினைச்சொல்",
+"பொருள்": "ஒரு தொகை அல்லது முடிவை தீர்மானிப்பது — நிறுவுவது",
+"எடுத்துக்காட்டு": "கட்டணம் அரசால் நிர்ணயிக்கப்படும்.",
+"ஆவண பொருள்": "'நிர்ணயிக்கப்பட்டது' என்றால் அரசு அல்லது நீதிமன்றம் தீர்மானித்தது.",
+},
+"அனுமதி": {
+"pos": "வினைச்சொல் / பெயர்ச்சொல்",
+"பொருள்": "ஒரு செயல் செய்வதற்கு அதிகாரப்பூர்வ ஒப்புதல் கொடுப்பது",
+"எடுத்துக்காட்டு": "கட்டிடம் கட்ட நகராட்சி அனுமதி பெற வேண்டும்.",
+"ஆவண பொருள்": "அரசு அனுமதி இல்லாமல் செய்யப்பட்ட செயல் சட்டவிரோதமாகலாம்.",
+},
+# ── EVERYDAY DOCUMENT WORDS ───────────────────────────────────────────────
+"இனிமேல்": {
+"pos": "வினையடை",
+"பொருள்": "இப்போதிலிருந்து — இனி முதல் — இந்த நாளிலிருந்து என்று பொருள். ஒரு மாற்றம் இப்போதே நடைமுறைக்கு வருகிறது என்று குறிக்கும்",
+"எடுத்துக்காட்டு": "இனிமேல் இந்த நிலம் உங்கள் பெயரில் இருக்கும். | இனிமேல் வாடகை 5000 ரூபாய் ஆகும்.",
+"ஆவண பொருள்": "ஒப்பந்தத்தில் 'இனிமேல்' என்று வந்தால் — இந்த ஆவணம் கையொப்பமிட்ட நாளிலிருந்தே அந்த விதிமுறை நடைமுறைக்கு வரும்.",
+},
+"உரிமையாளர்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு சொத்தை சட்டரீதியாக வைத்திருப்பவர் — நிலம், வீடு அல்லது பொருளின் சொந்தக்காரர்",
+"எடுத்துக்காட்டு": "இந்த வீட்டின் உரிமையாளர் திரு. ராமசாமி.",
+"ஆவண பொருள்": "பட்டாவில் யாருடைய பெயர் உள்ளதோ அவரே உரிமையாளர். வேறு யாரும் சட்டரீதியாக உரிமை கோர முடியாது.",
+"கவனிக்க": "உரிமையாளர் பெயர் பட்டாவில் பதிவு ஆகியிருக்க வேண்டும்.",
+},
+"உரிமை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு நபருக்கு சட்டப்படி சேர்ந்த அதிகாரம் அல்லது சொத்து",
+"எடுத்துக்காட்டு": "இந்த நிலத்தின் உரிமை அவருக்கு சேரும்.",
+"ஆவண பொருள்": "சட்ட ஆவணத்தில் உரிமை என்பது சட்டரீதியான கோரிக்கை வைக்கும் தகுதி.",
+},
+"தரப்பு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒப்பந்தத்தில் பங்கு பெறும் நபர் அல்லது குழு",
+"எடுத்துக்காட்டு": "முதல் தரப்பு விற்பவர், இரண்டாம் தரப்பு வாங்குபவர்.",
+"ஆவண பொருள்": "ஒப்பந்தத்தில் இரண்டு தரப்பினரும் கட்டாயம் கையொப்பமிட வேண்டும்.",
+},
+"தரப்பினர்": {
+"pos": "பெயர்ச்சொல் — பன்மை",
+"பொருள்": "ஒப்பந்தத்தில் பங்கேற்கும் நபர்கள் — அனைத்து நபர்களையும் சேர்த்து குறிப்பிடும்",
+"எடுத்துக்காட்டு": "இரு தரப்பினரும் ஒப்பந்தத்தில் ஒப்புக்கொண்டனர்.",
+"ஆவண பொருள்": "அனைத்து தரப்பினரும் கையொப்பமிட்டால் மட்டுமே ஆவணம் செல்லுபடியாகும்.",
+},
+"ஒப்பந்தம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "இரண்டு அல்லது அதிக நபர்களிடையே எழுத்தில் செய்யப்படும் சட்டரீதியான உடன்படிக்கை",
+"எடுத்துக்காட்டு": "வீடு வாடகைக்கு கொடுக்க ஒப்பந்தம் செய்யப்பட்டது.",
+"ஆவண பொருள்": "ஒப்பந்தம் மீறினால் நீதிமன்றம் செல்லலாம். ஸ்டாம்ப் பேப்பரில் பதிவு செய்தால் மட்டுமே சட்ட பாதுகாப்பு.",
+"கவனிக்க": "படிக்காமல் கையொப்பமிடாதீர்கள்.",
+},
+"சுமார்": {
+"pos": "வினையடை",
+"பொருள்": "தோராயமாக — கிட்டத்தட்ட — சரியான எண்ணிக்கை தெரியாதபோது மதிப்பிடும் வார்த்தை",
+"எடுத்துக்காட்டு": "சுமார் 40 வயது என்று ஆவணத்தில் குறிப்பிடப்பட்டுள்ளது.",
+"ஆவண பொருள்": "வயது அல்லது அளவு சரியாக தெரியாவிட்டால் 'சுமார்' என்று மதிப்பீடு செய்வார்கள்.",
+},
+"மேற்கண்ட": {
+"pos": "உரிச்சொல்",
+"பொருள்": "இந்த வரிக்கு மேலே குறிப்பிட்டது — மேலே சொன்னது என்று பொருள்",
+"எடுத்துக்காட்டு": "மேற்கண்ட விவரங்கள் சரியானவை என்று சான்றளிக்கிறேன்.",
+"ஆவண பொருள்": "ஆவணத்தில் 'மேற்கண்ட' என்றால் — இந்த வாக்கியத்திற்கு மேலே எழுதியவற்றை குறிக்கிறது.",
+},
+"கீழ்க்கண்ட": {
+"pos": "உரிச்சொல்",
+"பொருள்": "இந்த வரிக்கு கீழே குறிப்பிடப்படுவது — இனி சொல்லப்போவது என்று பொருள்",
+"எடுத்துக்காட்டு": "கீழ்க்கண்ட விதிமுறைகளை பின்பற்ற வேண்டும்.",
+"ஆவண பொருள்": "ஆவணத்தில் 'கீழ்க்கண்ட' என்றால் — இனி வரும் வரிகளில் சொல்லப்போவதை குறிக்கிறது.",
+},
+"நிபந்தனை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒப்பந்தத்தில் கட்டாயம் பின்பற்ற வேண்டிய கட்டுப்பாடு அல்லது நிலை",
+"எடுத்துக்காட்டு": "இந்த நிபந்தனைக்கு உட்பட்டு நிலம் வழங்கப்படும்.",
+"ஆவண பொருள்": "நிபந்தனை மீறினால் ஒப்பந்தம் தானாக ரத்தாகும்.",
+},
+"விதிமுறை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "பின்பற்ற வேண்டிய கட்டாய நியதிகள்",
+"எடுத்துக்காட்டு": "ஒப்பந்தத்தின் விதிமுறைகளை மீறினால் நடவடிக்கை எடுக்கப்படும்.",
+"ஆவண பொருள்": "கையொப்பமிட்டால் எல்லா விதிமுறைகளையும் ஒப்புக்கொண்டதாகும்.",
+},
+"காலக்கெடு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு வேலையை முடிக்க அல்லது விண்ணப்பிக்க கடைசி நாள்",
+"எடுத்துக்காட்டு": "விண்ணப்பிக்க காலக்கெடு 31 மார்ச் 2024.",
+"ஆவண பொருள்": "காலக்கெடு தாண்டினால் விண்ணப்பம் ஏற்கப்படாது.",
+"கவனிக்க": "காலக்கெடுவை மீறாதீர்கள் — நீட்டிப்பு கிடைக்காது.",
+},
+"ரத்து": {
+"pos": "வினைச்சொல் / பெயர்ச்சொல்",
+"பொருள்": "ஒரு முடிவை அல்லது ஒப்பந்தத்தை செல்லாததாக்குவது",
+"எடுத்துக்காட்டு": "கட்டணம் கட்டாததால் விண்ணப்பம் ரத்து செய்யப்பட்டது.",
+"ஆவண பொருள்": "ஆவணம் ரத்து ஆனால் அதன் மீது எந்த உரிமையும் கிடையாது.",
+},
+"நஷ்டஈடு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒருவரால் ஏற்பட்ட நஷ்டத்திற்கு கொடுக்கப்படும் பணம்",
+"எடுத்துக்காட்டு": "ஒப்பந்தம் மீறினால் நஷ்டஈடு கொடுக்க வேண்டும்.",
+"ஆவண பொருள்": "நஷ்டஈடு தொகை ஒப்பந்தத்திலேயே குறிப்பிடப்படும்.",
+},
+"முன்பணம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒப்பந்தம் செய்யும்போது முன்கூட்டியே கொடுக்கும் பணம்",
+"எடுத்துக்காட்டு": "வீட்டிற்கு 50,000 ரூபாய் முன்பணம் கொடுத்தார்.",
+"ஆவண பொருள்": "முன்பணம் கொடுத்தால் ரசீது வாங்க வேண்டும். ஒப்பந்தம் ரத்தானால் முன்பணம் திரும்ப கிடைக்கும்.",
+},
+"வாடகை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "வீடு அல்லது நிலத்தை பயன்படுத்துவதற்காக மாதந்தோறும் கொடுக்கும் பணம்",
+"எடுத்துக்காட்டு": "மாதந்தோறும் 5000 ரூபாய் வாடகை செலுத்த வேண்டும்.",
+"ஆவண பொருள்": "வாடகை ஒப்பந்தத்தில் தொகை, செலுத்தும் தேதி, காலம் தெளிவாக இருக்க வேண்டும்.",
+},
+# ── LAND ────────────────────────────────────────────────────────────────
+"பட்டா": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "நிலத்தின் உரிமை பத்திரம் — நீங்கள் அந்த நிலத்தின் சட்டபூர்வ உரிமையாளர் என்பதை அரசு உறுதி செய்யும் ஆவணம்",
+"எடுத்துக்காட்டு": "ரமேஷிடம் அவரது நிலத்திற்கு பட்டா இருக்கிறது.",
+"ஆவண பொருள்": "பட்டா இல்லாமல் நிலத்தை விற்கவோ அடமானம் வைக்கவோ முடியாது.",
+"கவனிக்க": "பட்டாவில் உங்கள் பெயர் இல்லையென்றால் நீங்கள் சட்டபூர்வமாக உரிமையாளர் அல்ல.",
+},
+"சிட்டா": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "நிலத்தின் விவரங்களை கொண்ட அரசு பதிவு ஆவணம் — நிலத்தின் அளவு, வகை, உரிமையாளர் பெயர் இதில் இருக்கும்",
+"எடுத்துக்காட்டு": "சிட்டாவில் நிலத்தின் அளவு 2 ஏக்கர் என்று குறிப்பிடப்பட்டுள்ளது.",
+"ஆவண பொருள்": "தமிழ்நாட்டில் நிலம் வாங்கும்போது சிட்டா + பட்டா இரண்டும் தேவை.",
+},
+"சர்வே எண்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒவ்வொரு நிலத்திற்கும் அரசு கொடுக்கும் தனிப்பட்ட அடையாள எண்",
+"எடுத்துக்காட்டு": "சர்வே எண் 123/4 என்பது அந்த நிலத்தின் அரசு பதிவு எண்.",
+"ஆவண பொருள்": "நிலம் வாங்க, விற்க, அடமானம் வைக்க இந்த எண் கட்டாயம் தேவை.",
+},
+# ── LEGAL / GOVT ─────────────────────────────────────────────────────────
+"சான்றிதழ்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு விஷயம் உண்மை என்று அரசு உறுதி செய்யும் ஆவணம்",
+"எடுத்துக்காட்டு": "சாதி சான்றிதழ் வேலைக்கு விண்ணப்பிக்க தேவை.",
+"ஆவண பொருள்": "அரசு அதிகாரி கையொப்பமிட்ட சான்றிதழ் மட்டுமே செல்லுபடியாகும்.",
+},
+"அரசாணை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "அரசு அதிகாரப்பூர்வமாக பிறப்பிக்கும் ஆணை — அரசின் கட்டளை",
+"எடுத்துக்காட்டு": "இந்த திட்டம் அரசாணை எண் 150 மூலம் அனுமதிக்கப்பட்டது.",
+"ஆவண பொருள்": "அரசாணை கட்டாயம் பின்பற்ற வேண்டிய உத்தரவு. மீறினால் சட்ட நடவடிக்கை வரும்.",
+},
+"மனு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "குறை தீர்க்க அல்லது ஒரு விஷயத்திற்கு அரசிடம் கோரும் கடிதம்",
+"எடுத்துக்காட்டு": "நிலம் சம்பந்தமாக கலெக்டரிடம் மனு சமர்ப்பித்தார்.",
+"ஆவண பொருள்": "மனு கொடுத்த பிறகு ரசீது வாங்க வேண்டும். மனு எண் வைத்திருங்கள்.",
+},
+"வழக்கு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "நீதிமன்றத்தில் தீர்வு காண தாக்கல் செய்யப்படும் புகார்",
+"எடுத்துக்காட்டு": "நிலம் சம்பந்தமாக நீதிமன்றத்தில் வழக்கு தாக்கல் செய்தார்.",
+"ஆவண பொருள்": "வழக்கு தாக்கல் ஆனால் வழக்கு எண் வைத்திருங்கள்.",
+},
+"தீர்ப்பு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "நீதிமன்றம் வழக்கில் கொடுக்கும் இறுதி முடிவு",
+"எடுத்துக்காட்டு": "நீதிமன்றம் வாதிக்கு சாதகமாக தீர்ப்பு அளித்தது.",
+"ஆவண பொருள்": "தீர்ப்புக்கு எதிராக உயர் நீதிமன்றத்தில் மேல்முறையீடு செய்யலாம்.",
+},
+"கட்டணம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "சேவைக்காக செலுத்த வேண்டிய பணம்",
+"எடுத்துக்காட்டு": "பதிவுக்கு கட்டணம் கட்ட வேண்டும்.",
+"ஆவண பொருள்": "அரசு நிர்ணயிக்கும் கட்டணம் மட்டுமே செலுத்த வேண்டும்.",
+},
+"ரசீது": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "பணம் கட்டியதற்கான ஆதாரக் கடிதம்",
+"எடுத்துக்காட்டு": "கட்டணம் கட்டிய பிறகு ரசீது வாங்கினார்.",
+"ஆவண பொருள்": "ரசீது இல்லாமல் கட்டினேன் என்று நிரூபிக்க முடியாது.",
+"கவனிக்க": "எப்போதும் ரசீது வாங்குங்கள்.",
+},
+"கையொப்பம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு ஆவணத்தில் நீங்கள் ஒப்புதல் அளிக்கும் கை எழுத்து",
+"எடுத்துக்காட்டு": "ஆவணத்தில் கையொப்பமிட்டார்.",
+"ஆவண பொருள்": "கையொப்பமிட்ட ஆவணம் சட்டரீதியான ஒப்பந்தம்.",
+"கவனிக்க": "படிக்காமல் கையொப்பமிடாதீர்கள் — அது மிகவும் ஆபத்தானது.",
+},
+"அடமானம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "கடன் வாங்க சொத்தை பாதுகாப்பாக வைப்பது — கடன் திரும்ப கொடுக்காவிட்டால் சொத்து போகும்",
+"எடுத்துக்காட்டு": "வீட்டை அடமானம் வைத்து வங்கியில் கடன் வாங்கினார்.",
+"ஆவண பொருள்": "அடமான ஆவணம் பதிவு செய்தால் மட்டுமே சட்ட பாதுகாப்பு.",
+"கவனிக்க": "கடன் திரும்ப கொடுக்காவிட்டால் வங்கி சொத்தை ஏலம் போடலாம்.",
+},
+"வாரிசு சான்றிதழ்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒருவர் இறந்த பிறகு அவரது சொத்துக்கு யார் உரிமையாளர் என்று அரசு சொல்லும் ஆவணம்",
+"எடுத்துக்காட்டு": "அப்பா இறந்த பிறகு வாரிசு சான்றிதழ் வாங்கி சொத்து பெற்றனர்.",
+"ஆவண பொருள்": "வாரிசு சான்றிதழ் இல்லாமல் இறந்தவரின் சொத்தை சட்டரீதியாக கோர முடியாது.",
+},
+
+# ── CRITICAL MISSING WORDS ────────────────────────────────────────────────
+"பத்திரம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "சட்டரீதியான முக்கியமான ஆவணம் — சொத்தின் உரிமையை நிரூபிக்கும் எழுத்துப்பூர்வ ஆவணம். விற்பனை பத்திரம், அடமான பத்திரம் என பல வகை உண்டு",
+"எடுத்துக்காட்டு": "வீடு வாங்கிய பிறகு விற்பனை பத்திரம் பதிவு செய்தனர்.",
+"ஆவண பொருள்": "பத்திரம் பதிவு அலுவலகத்தில் பதிவு செய்வது கட்டாயம். பதிவு செய்யாத பத்திரம் சட்டத்தில் செல்லாது.",
+"கவனிக்க": "பத்திரம் பதிவு செய்யாவிட்டால் சொத்தின் மீது உங்கள் உரிமை சட்டரீதியாக உறுதிப்படாது.",
+},
+"கிரயம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "சொத்தை வாங்கும் விலை — சொத்து விற்பனை தொகை",
+"எடுத்துக்காட்டு": "இந்த நிலத்தின் கிரயம் 10 லட்சம் ரூபாய்.",
+"ஆவண பொருள்": "கிரயம் என்பது சொத்தை வாங்கிய விலை. இதை பத்திரத்தில் குறிப்பிட வேண்டும்.",
+},
+"கிரய பத்திரம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "சொத்து விற்பனை ஆவணம் — விற்கும் விலை மற்றும் உரிமை மாற்றம் குறிப்பிட்ட சட்ட ஆவணம்",
+"எடுத்துக்காட்டு": "கிரய பத்திரம் பதிவு செய்த பிறகு சொத்து வாங்குபவருக்கு சேரும்.",
+"ஆவண பொருள்": "கிரய பத்திரம் = விற்பனை பத்திரம். பதிவு செய்தால் மட்டுமே சட்ட உரிமை.",
+},
+"வில்லங்கம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு சொத்தின் மீது உள்ள சட்ட தடை அல்லது கடன் சுமை",
+"எடுத்துக்காட்டு": "இந்த நிலத்தில் வில்லங்கம் இல்லை என்று சான்றிதழ் வாங்கினார்.",
+"ஆவண பொருள்": "வில்லங்கம் உள்ள சொத்தை வாங்கினால் அந்த கடனும் உங்களுக்கு வரும்.",
+"கவனிக்க": "சொத்து வாங்கும் முன் EC (வில்லங்கம் இல்லா சான்றிதழ்) வாங்குவது மிக முக்கியம்.",
+},
+"முத்திரை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "அதிகாரப்பூர்வமான அடையாளத்தை குறிக்கும் முத்திரை — அரசு அல்லது அதிகாரி ஒரு ஆவணத்தை உறுதிப்படுத்தும் முத்திரை",
+"எடுத்துக்காட்டு": "அரசு முத்திரை பதிக்கப்பட்ட ஆவணம் மட்டுமே செல்லுபடியாகும்.",
+"ஆவண பொருள்": "முத்திரை இல்லாத ஆவணம் போலியாக இருக்கலாம். எப்போதும் முத்திரையை சரிபார்க்கவும்.",
+},
+"ஸ்டாம்ப் பேப்பர்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "அரசு ஸ்டாம்ப் டியூட்டி கட்டிய சிறப்பு அரசு காகிதம் — இதில் எழுதப்பட்ட ஒப்பந்தங்கள் சட்டரீதியானவை",
+"எடுத்துக்காட்டு": "ஒப்பந்தம் 100 ரூபாய் ஸ்டாம்ப் பேப்பரில் எழுதப்பட்டது.",
+"ஆவண பொருள்": "சட்டரீதியான ஒப்பந்தங்கள் ஸ்டாம்ப் பேப்பரில் எழுதப்பட வேண்டும்.",
+},
+"தாக்கல்": {
+"pos": "வினைச்சொல் / பெயர்ச்சொல்",
+"பொருள்": "ஆவணங்களை நீதிமன்றம் அல்லது அரசு அலுவலகத்தில் சமர்ப்பிப்பது",
+"எடுத்துக்காட்டு": "வழக்கு நீதிமன்றத்தில் தாக்கல் செய்யப்பட்டது.",
+"ஆவண பொருள்": "தாக்கல் செய்த பிறகு ரசீது எண் வைத்திருங்கள்.",
+},
+"தவணை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "கடனை குறிப்பிட்ட காலத்தில் சிறிய தொகைகளாக செலுத்துவது — installment என்று ஆங்கிலத்தில் சொல்வார்கள்",
+"எடுத்துக்காட்டு": "மாதந்தோறும் 5000 ரூபாய் தவணையில் கடன் திரும்ப செலுத்துவார்.",
+"ஆவண பொருள்": "தவணை தவறினால் அபராதம் வசூலிக்கப்படும்.",
+},
+"வட்டி": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "கடனுக்கு கூடுதலாக செலுத்த வேண்டிய தொகை — interest என்று ஆங்கிலத்தில் சொல்வார்கள்",
+"எடுத்துக்காட்டு": "ஆண்டுக்கு 12% வட்டி என்று ஒப்பந்தத்தில் குறிப்பிடப்பட்டுள்ளது.",
+"ஆவண பொருள்": "ஒப்பந்தத்தில் வட்டி விகிதம் தெளிவாக குறிப்பிடப்பட வேண்டும்.",
+},
+"அபராதம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "விதிமுறை மீறியதற்கு விதிக்கப்படும் கூடுதல் தொகை",
+"எடுத்துக்காட்டு": "காலக்கெடுவில் வரி கட்டாவிட்டால் அபராதம் விதிக்கப்படும்.",
+"ஆவண பொருள்": "அபராதம் தவிர்க்க காலக்கெடுவிற்குள் அனைத்தையும் செய்யுங்கள்.",
+},
+"ஆஜர்": {
+"pos": "வினைச்சொல் / பெயர்ச்சொல்",
+"பொருள்": "நீதிமன்றம் அல்லது அலுவலகத்தில் நேரில் வந்து நிற்பது",
+"எடுத்துக்காட்டு": "நீதிமன்றத்தில் குறிப்பிட்ட தேதியில் ஆஜராக வேண்டும்.",
+"ஆவண பொருள்": "ஆஜராகாவிட்டால் ஒரே தரப்பு சார்பில் தீர்ப்பு வரலாம்.",
+"கவனிக்க": "நீதிமன்ற சம்மன் வந்தால் கட்டாயம் ஆஜராக வேண்டும்.",
+},
+"சம்மன்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "நீதிமன்றம் ஒருவரை வர வேண்டும் என்று அனுப்பும் அதிகாரப்பூர்வ கடிதம்",
+"எடுத்துக்காட்டு": "நீதிமன்றத்தில் இருந்து சம்மன் வந்தது.",
+"ஆவண பொருள்": "சம்மன் புறக்கணித்தால் கைது ஆணை வரலாம்.",
+"கவனிக்க": "சம்மன் வந்தால் வழக்கறிஞரிடம் உடனே ஆலோசியுங்கள்.",
+},
+"வாரிசு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒருவர் இறந்த பிறகு அவரது சொத்தை பெறும் உரிமையுள்ள நபர்",
+"எடுத்துக்காட்டு": "அவரது மகன்கள் வாரிசுகளாக அறிவிக்கப்பட்டனர்.",
+"ஆவண பொருள்": "வாரிசு சான்றிதழ் இல்லாமல் இறந்தவரின் சொத்தை கோர முடியாது.",
+},
+"பவர் ஆஃப் அட்டர்னி": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒருவர் தன் சார்பாக வேறொருவர் சட்டரீதியாக செயல்பட அனுமதிக்கும் ஆவணம்",
+"எடுத்துக்காட்டு": "வெளிநாட்டில் இருப்பதால் தன் சகோதரருக்கு பவர் ஆஃப் அட்டர்னி கொடுத்தார்.",
+"ஆவண பொருள்": "பவர் ஆஃப் அட்டர்னி நோட்டரி சான்றளிக்கப்பட்டிருக்க வேண்டும்.",
+},
+"பிரிவினை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "கூட்டு சொத்தை தனித்தனியாக பிரிப்பது — partition என்று ஆங்கிலத்தில் சொல்வார்கள்",
+"எடுத்துக்காட்டு": "நிலத்தை சகோதரர்களிடையே பிரிவினை செய்தனர்.",
+"ஆவண பொருள்": "பிரிவினை ஆவணம் பதிவு செய்தால் மட்டுமே சட்டரீதியாக செல்லும்.",
+},
+"சொத்து": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒருவருக்கு சொந்தமான நிலம், வீடு, பணம் அல்லது பொருள்",
+"எடுத்துக்காட்டு": "இந்த சொத்தை அவர் பட்டாவில் பதிவு செய்துள்ளார்.",
+"ஆவண பொருள்": "சொத்தின் மீது வரி கட்டவும், பதிவு செய்யவும் கட்டாயம்.",
+},
+"தொகை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "பணத்தின் அளவு",
+"எடுத்துக்காட்டு": "மொத்த தொகை 1,00,000 ரூபாய்.",
+"ஆவண பொருள்": "தொகையை எண்ணிலும் எழுத்திலும் குறிக்கவும்.",
+},
+"விலை": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "ஒரு பொருள் அல்லது சொத்தை வாங்க செலுத்தும் பணம்",
+"எடுத்துக்காட்டு": "இந்த வீட்டின் விலை 50 லட்சம்.",
+"ஆவண பொருள்": "பத்திரத்தில் சொத்தின் விலை குறைவாக போட்டால் சட்ட சிக்கல் வரும்.",
+},
+"குறிப்பு": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "கவனிக்க வேண்டிய சிறப்பு தகவல்",
+"எடுத்துக்காட்டு": "குறிப்பு: மேற்கண்ட விவரங்கள் சரியானவை.",
+"ஆவண பொருள்": "ஆவணத்தில் குறிப்பு என்று வந்தால் அதை கவனமாக படிக்கவும்.",
+},
+"ஆவணம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "எழுத்தில் தயாரிக்கப்பட்ட சட்டரீதியான அல்லது முக்கியமான காகிதம்",
+"எடுத்துக்காட்டு": "அனைத்து ஆவணங்களையும் பாதுகாப்பாக வைத்திருங்கள்.",
+"ஆவண பொருள்": "ஆவணங்களை இழந்தால் அரசு அலுவலகத்தில் நகல் வாங்கலாம்.",
+},
+"சட்டம்": {
+"pos": "பெயர்ச்சொல்",
+"பொருள்": "அரசு இயற்றும் விதிகள் மற்றும் கட்டளைகள்",
+"எடுத்துக்காட்டு": "இந்த ஒப்பந்தம் இந்திய சட்டத்தின்படி செல்லுபடியாகும்.",
+"ஆவண பொருள்": "சட்டப்படி செய்யப்படாத ஒப்பந்தங்கள் செல்லாது.",
+},
+"நேரில்": {
+"pos": "வினையடை",
+"பொருள்": "நேரடியாக — தனிப்பட்ட முறையில் வந்து என்று பொருள்",
+"எடுத்துக்காட்டு": "விண்ணப்பதாரர் நேரில் வந்து ஆவணங்களை சமர்ப்பிக்க வேண்டும்.",
+"ஆவண பொருள்": "'நேரில் ஆஜராக வேண்டும்' என்றால் நீங்களே போக வேண்டும், பிறரை அனுப்ப முடியாது.",
+},
+
+}
+
+# Aliases — some words may appear with slight variations
+ALIASES = {
+"விரும்பு": "விரும்பு",
+"விரும்ப": "விரும்பு",
+"விரும்பி": "விரும்பு",
+"செய்ய": "செய்",
+"கொடுக்க": "கொடு",
+"வழங்கு": "வழங்கு",
+"வழங்க": "வழங்கு",
+"தெரிவிக்க": "தெரிவி",
+"அனுமதிக்க": "அனுமதி",
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WORD CLEANER + TRANSLITERATION DETECTOR
+# ══════════════════════════════════════════════════════════════════════════════
+def clean_word(w: str) -> str:
+# Strip invisible Unicode control characters (ZWNJ U+200C, ZWJ U+200D, BOM, etc.)
+# Tamil keyboards and fonts often append these silently
+w = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\u202a-\u202e\u2060-\u2064\ufeff]', '', w)
+# Strip leading/trailing punctuation and whitespace
+w = re.sub(r'^[\s,.\-;:\u201c\u201d"\'()[\]/\\|]+|[\s,.\-;:\u201c\u201d"\'()[\]/\\|]+$', '', w)
+return w.strip()
+
+_REAL_EN = re.compile(
+r'\b(from|now|on|here|after|hereafter|owner|person|agreement|contract|property|'
+r'land|certificate|order|court|legal|government|right|claim|witness|sign|date|'
+r'number|area|name|address|amount|pay|tax|duty|document|record|file|case|'
+r'judge|petition|transfer|sale|lease|rent|survey|house|building|the|this|that|'
+r'and|or|of|in|to|for|with|by|at|an|a|is|are|was|were|have|has|will|shall|'
+r'may|can|must|should|not|no|yes|want|wish|desire|if|when|since|because|'
+r'optional|voluntary|condition|term|cancel|revoke)\b',
+re.IGNORECASE
+)
+
+def is_transliteration(result: str) -> bool:
+if not result or len(result.strip()) < 2: return True
+r = result.strip()
+if _REAL_EN.search(r): return False
+if re.match(r'^[A-Za-z\s]+$', r) and len(r) < 30: return True
+return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LOOKUP
+# ══════════════════════════════════════════════════════════════════════════════
+def dict_lookup(root: str):
+if root in D: return D[root]
+if root in ALIASES and ALIASES[root] in D: return D[ALIASES[root]]
+for v in _variants(root):
+if v in D: return D[v]
+return None
+
+def _variants(w):
+sw = [("ரை","றை"),("றை","ரை"),("ல","ள"),("ள","ல"),("ன","ந"),("ந","ன")]
+return [w.replace(a,b,1) for a,b in sw if a in w and w.replace(a,b,1)!=w]
+
+def src_mymemory(word: str):
 try:
-    clicked = st.query_params.get("w","")
-    if clicked and clicked != st.session_state.sel_word:
-        st.session_state.sel_word = clicked
-        st.session_state.meaning  = lookup(clicked)
-        if clicked not in st.session_state.history:
-            st.session_state.history.insert(0, clicked)
-            st.session_state.history = st.session_state.history[:20]
-except Exception: pass
+r = requests.get("https://api.mymemory.translated.net/get",
+params={"q": word, "langpair": "ta|en"}, timeout=4)
+if r.status_code == 200:
+t = r.json().get("responseData",{}).get("translatedText","")
+if t and not is_transliteration(t) and len(t.strip()) > 1:
+return t.strip()
+except: pass
+return None
 
+def src_libre(word: str):
+"""LibreTranslate — free, open source"""
+for url in ["https://libretranslate.com/translate",
+"https://translate.argosopentech.com/translate"]:
+try:
+r = requests.post(url,
+json={"q": word, "source": "ta", "target": "en", "format": "text"},
+timeout=4)
+if r.status_code == 200:
+t = r.json().get("translatedText","")
+if t and not is_transliteration(t) and len(t.strip()) > 1:
+return t.strip()
+except: pass
+return None
+
+def src_wiktionary_ta(word: str):
+"""Tamil Wiktionary — dictionary definition in Tamil"""
+try:
+url = f"https://ta.wiktionary.org/api/rest_v1/page/definition/{requests.utils.quote(word)}"
+r = requests.get(url, timeout=4)
+if r.status_code == 200:
+data = r.json()
+for key in data:
+entries = data[key]
+if isinstance(entries, list) and entries:
+raw = entries[0].get("definitions",[{}])[0].get("definition","")
+clean = re.sub(r"<[^>]+>","",raw).strip()
+if clean and len(clean) > 3:
+return clean
+except: pass
+return None
+
+def src_wiktionary_en(word: str):
+"""English Wiktionary — Tamil section"""
+try:
+url = f"https://en.wiktionary.org/api/rest_v1/page/definition/{requests.utils.quote(word)}"
+r = requests.get(url, timeout=4)
+if r.status_code == 200:
+data = r.json()
+for key in data:
+for entry in data[key]:
+if entry.get("language","").lower() in ("tamil","ta"):
+defns = entry.get("definitions",[])
+if defns:
+raw = defns[0].get("definition","")
+clean = re.sub(r"<[^>]+>","",raw).strip()
+if clean: return clean
+except: pass
+return None
+
+def src_google(word: str):
+"""Google Translate via deep-translator"""
+try:
+from deep_translator import GoogleTranslator
+t = GoogleTranslator(source="ta", target="en").translate(word)
+if t and not is_transliteration(t): return t.strip()
+except: pass
+return None
+
+def src_microsoft(word: str):
+"""Microsoft Translator via deep-translator"""
+try:
+from deep_translator import MicrosoftTranslator
+t = MicrosoftTranslator(source="ta", target="en").translate(word)
+if t and not is_transliteration(t): return t.strip()
+except: pass
+return None
+
+def src_linguee(word: str):
+"""MyMemory with different email for higher quota"""
+try:
+r = requests.get("https://api.mymemory.translated.net/get",
+params={"q": word, "langpair": "ta|en", "de": "tamil_reader@example.com"},
+timeout=4)
+if r.status_code == 200:
+t = r.json().get("responseData",{}).get("translatedText","")
+if t and not is_transliteration(t) and len(t.strip()) > 1:
+return t.strip()
+except: pass
+return None
+
+def src_apertium(word: str):
+"""Apertium — open source translation"""
+try:
+r = requests.get("https://www.apertium.org/apy/translate",
+params={"q": word, "langpair": "ta|en"}, timeout=4)
+if r.status_code == 200:
+t = r.json().get("responseData",{}).get("translatedText","")
+if t and not is_transliteration(t) and len(t.strip()) > 1:
+return t.strip()
+except: pass
+return None
+
+def src_wtamil_to_en(word: str):
+"""Wikipedia Tamil page extract — gets Tamil definition"""
+try:
+r = requests.get(
+f"https://ta.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(word)}",
+timeout=4)
+if r.status_code == 200:
+extract = r.json().get("extract","")
+if extract and len(extract) > 10:
+return extract[:300]
+except: pass
+return None
+
+def find_context(text: str, word: str):
+if not text or not word: return None
+for sent in re.split(r'(?<=[.!?\n])\s*', text):
+s = sent.strip()
+if word in s and len(s) > 5: return s
+idx = text.find(word)
+if idx >= 0:
+return "…" + text[max(0,idx-80):min(len(text),idx+len(word)+80)].strip() + "…"
+return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def lookup(word: str, doc_text: str = "") -> dict:
+w = clean_word(word)
+morph = analyze(w)
+root = morph["root"]
+dict_res = dict_lookup(root) or dict_lookup(w)
+ctx = find_context(doc_text, w) or find_context(doc_text, root)
+online = None
+if not dict_res:
+# Try 8 free sources in cascade — stop at first real result
+for src_fn, arg in [
+(src_mymemory, w),
+(src_mymemory, root),
+(src_wiktionary_ta, w),
+(src_wiktionary_ta, root),
+(src_libre, w),
+(src_wiktionary_en, w),
+(src_apertium, w),
+(src_google, w),
+(src_linguee, w),
+(src_wtamil_to_en, w),
+]:
+result = src_fn(arg)
+if result:
+online = result
+break
+return {
+"word": word, "clean": w, "morph": morph, "root": root,
+"dict": dict_res, "online": online, "context": ctx,
+"found": bool(dict_res or online),
+}
+
+# ── Audio ─────────────────────────────────────────────────────────────────────
+def speak(word):
+try:
+buf = io.BytesIO()
+gTTS(text=clean_word(word), lang="ta", slow=False).write_to_fp(buf)
+buf.seek(0); return buf
+except: return None
+
+# ── OCR ───────────────────────────────────────────────────────────────────────
+def preprocess(img):
+img = img.convert("L"); w, h = img.size
+if w < 1800: sc = 1800/w; img = img.resize((int(w*sc),int(h*sc)), Image.LANCZOS)
+img = ImageEnhance.Contrast(img).enhance(2.2)
+img = ImageEnhance.Sharpness(img).enhance(2.0)
+arr = np.array(img)
+arr = ((arr > int(arr.mean()*0.85))*255).astype(np.uint8)
+return Image.fromarray(arr)
+
+def clean_text(raw):
+lines = raw.splitlines(); out = []
+for ln in lines:
+ln = re.sub(r"[|}{\\~`_]","",ln).strip()
+ln = re.sub(r" {2,}"," ",ln)
+if not ln:
+if out and out[-1] != "": out.append("")
+continue
+out.append(ln)
+merged, i = [], 0
+while i < len(out):
+if out[i] == "": merged.append(""); i += 1; continue
+cur = out[i]
+while (i+1 < len(out) and out[i+1] != ""
+and not cur.rstrip().endswith((".",":",")","?","!","।"))
+and len(cur) > 8):
+i += 1; cur += " " + out[i]
+merged.append(cur); i += 1
+return "\n".join(merged).strip()
+
+def ocr_image(img):
+return clean_text(pytesseract.image_to_string(preprocess(img), config=r"--oem 3 --psm 6 -l tam+eng"))
+
+def extract_pdf(f):
+ts = []
+with pdfplumber.open(f) as pdf:
+for p in pdf.pages:
+t = p.extract_text()
+if t: ts.append(clean_text(t))
+return "\n\n".join(ts)
+
+def is_tamil(w): return bool(re.search(r"[\u0B80-\u0BFF]", w))
+def tokenize(t): return re.findall(r"[\u0B80-\u0BFF]+", t)
+
+DOC_TYPES = {
+"பட்டா / நிலம்": ["பட்டா","சிட்டா","survey","சர்வே","நிலம்","ஏக்கர்"],
+"வாடகை ஒப்பந்தம்": ["வாடகை","குடியிருப்பவர்","rent","lease"],
+"அரசாணை (G.O.)": ["G.O.","அரசாணை","government order","செயல்முறை"],
+"சான்றிதழ்": ["சான்றிதழ்","certificate","பிறப்பு","சாதி","வருமானம்"],
+"சட்ட ஆவணம்": ["மனு","petition","court","நீதிமன்றம்","வழக்கு"],
+}
+def detect_doc_type(text):
+t = text.lower()
+for dtype, kws in DOC_TYPES.items():
+if any(k.lower() in t for k in kws): return dtype
+return "அரசு ஆவணம்"
+
+for k, v in [("text",""),("word",""),("doc_type","அரசு ஆவணம்")]:
+st.session_state.setdefault(k, v)
+
+# ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="gov-topstrip">
-  <div>🇮🇳 தமிழ்நாடு அரசு · Government of Tamil Nadu · India</div>
-  <div class="gov-topstrip-links">
-    <span>30 மார்ச் 2026</span>
-    <span style="color:#445566">|</span>
-    <span>Screen Reader</span>
-    <span>A+ A A-</span>
-    <span>தமிழ் | English</span>
-  </div>
-</div>
-<div class="gov-header">
-  <div class="gov-header-logo">
-    <div class="gov-emblem">த</div>
-    <div>
-      <div class="gov-logo-title">தமிழ்நாடு அரசு</div>
-      <div class="gov-logo-sub">GOVERNMENT OF TAMIL NADU · INDIA</div>
-    </div>
-  </div>
-  <div class="gov-header-center">
-    <div>
-      <div class="gov-app-title">தமிழ் மொழி உதவியாளர் — Tamil Language Assistant</div>
-      <div class="gov-app-sub">
-        ஆவண வாசிப்பு · சொல் பொருள் தேடல் · தமிழ் சுருக்கம் · 4-நிலை அமைப்பு |
-        Document Reader · Word Meaning · Tamil Summarization · 4-Tier Engine
-      </div>
-    </div>
-  </div>
-  <div class="gov-header-badges">
-    <div class="gov-badge"><span class="gov-badge-dot"></span>LIVE SYSTEM</div>
-    <div class="gov-badge"> TN GOVT</div>
-    <div class="gov-badge"> SECURE</div>
-  </div>
-</div>
-<div class="gov-nav">
-  <a class="gov-nav-item active"> முகப்பு</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> ஆவண வாசிப்பு</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> சொல் தேடல்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> சுருக்கம்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> அகராதி</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> புள்ளிவிவரம்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item"> உதவி</a>
-</div>
-<div class="gov-breadcrumb">
-  <span class="gov-bc-link">முகப்பு</span> ›
-  <span class="gov-bc-link">சேவைகள்</span> ›
-  <span>தமிழ் மொழி உதவியாளர்</span>
-</div>
-<div class="tn-ticker">
-  <span class="tn-ticker-label"> அறிவிப்பு</span>
-  <span class="tn-ticker-content">
-    தமிழ் சொற்களை கிளிக் செய்து பொருள் காணுங்கள் &nbsp;·&nbsp;
-    PDF, DOCX, TXT கோப்புகளை பதிவேற்றவும் &nbsp;·&nbsp;
-    புதுமை: தமிழ் சுருக்கம் + மதிப்பீட்டு அமைப்பு இப்போது கிடைக்கிறது &nbsp;·&nbsp;
-    ROUGE மதிப்பீடு · முக்கிய சொல் உள்ளடக்கம் · அமுக்க விகிதம் &nbsp;·&nbsp;
-    Click any underlined Tamil word to see meaning &nbsp;·&nbsp;
-    NEW: Tamil Summarization with Evaluation Metrics now available &nbsp;·&nbsp;
-    4-நிலை பொருள் தேடல் அமைப்பு இப்போது கிடைக்கிறது &nbsp;·&nbsp;
-    தமிழ்நாடு அரசு சேவை — Government of Tamil Nadu Service
-  </span>
+<div class="hdr">
+<h1>📜 தமிழ் அரசு ஆவண வாசகன்</h1>
+<p>ஆவணம் பதிவேற்று · உரை படி · தமிழில் பொருள் கண்டறி · இலக்கண வேர்ச்சொல் பகுப்பாய்வு · 100% இலவசம்</p>
 </div>
 """, unsafe_allow_html=True)
 
-col_l, col_c, col_r = st.columns([2, 5, 3], gap="small")
+t_reader, t_deploy = st.tabs(["📄 ஆவண வாசகன்", "🚀 Deploy Guide"])
 
-with col_l:
-    st.markdown('<div class="gov-sidebar-head"> உயிர் எழுத்துக்கள்</div>', unsafe_allow_html=True)
-    st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
-    vcols = st.columns(6)
-    for i, letter in enumerate(TAMIL_VOWELS):
-        with vcols[i % 6]:
-            if st.button(letter, key=f"v_{letter}"):
-                st.session_state.sel_word = letter
-                st.session_state.meaning  = lookup(letter)
-                if letter not in st.session_state.history:
-                    st.session_state.history.insert(0, letter)
-    st.markdown('</div>', unsafe_allow_html=True)
+with t_reader:
+left, right = st.columns([3, 2], gap="large")
 
-    st.markdown('<div class="gov-sidebar-head">மெய் எழுத்துக்கள்</div>', unsafe_allow_html=True)
-    st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
-    ccols = st.columns(6)
-    for i, letter in enumerate(TAMIL_CONSONANTS[:18]):
-        with ccols[i % 6]:
-            if st.button(letter, key=f"c_{letter}"):
-                st.session_state.sel_word = letter
-                st.session_state.meaning  = lookup(letter)
-    st.markdown('</div>', unsafe_allow_html=True)
+with left:
+st.markdown('<div class="slabel">படி 1 — ஆவணம் பதிவேற்றவும்</div>', unsafe_allow_html=True)
+uploaded = st.file_uploader("file", type=["pdf","png","jpg","jpeg"], label_visibility="collapsed")
 
-    all_text = " ".join(b["text"] for b in st.session_state.blocks)
-    tw_all   = [clean_word(t) for t in all_text.split() if is_tamil_word(t)]
-    tw_uniq  = list(dict.fromkeys(w for w in tw_all if w))
-    in_dict  = sum(1 for w in tw_uniq if tier2_json(w))
+if uploaded:
+with st.spinner("உரை எடுக்கிறோம்…"):
+if uploaded.type == "application/pdf":
+text = extract_pdf(uploaded)
+if not text.strip():
+st.warning("OCR இயக்குகிறோம்…")
+try:
+from pdf2image import convert_from_bytes
+imgs = convert_from_bytes(uploaded.getvalue(), first_page=1, last_page=1)
+text = ocr_image(imgs[0]) if imgs else ""
+except Exception as e:
+st.error(f"பிழை: {e}"); text = ""
+else:
+text = ocr_image(Image.open(uploaded))
+st.session_state.text = text
+st.session_state.doc_type = detect_doc_type(text)
 
-    st.markdown(f"""
-    <div class="gov-sidebar-head"> ஆவண புள்ளிவிவரம்</div>
-    <div class="gov-sidebar-body">
-      <div class="gov-stat-row">
-        <span class="gov-stat-label">தமிழ் சொற்கள்</span>
-        <span class="gov-stat-val">{len(tw_uniq):,}</span>
-      </div>
-      <div class="gov-stat-row">
-        <span class="gov-stat-label">அகராதியில் உள்ளவை</span>
-        <span class="gov-stat-val">{in_dict:,}</span>
-      </div>
-      <div class="gov-stat-row">
-        <span class="gov-stat-label">தேடல் தேவையானவை</span>
-        <span class="gov-stat-val">{max(0, len(tw_uniq)-in_dict):,}</span>
-      </div>
-      <div class="gov-stat-row">
-        <span class="gov-stat-label">அகராதி அளவு</span>
-        <span class="gov-stat-val">{len(TDICT):,}</span>
-      </div>
-      <div class="gov-stat-row">
-        <span class="gov-stat-label">தேர்ந்தெடுக்கப்பட்டது</span>
-        <span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">
-          {st.session_state.sel_word or "—"}
-        </span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+if st.session_state.text:
+st.markdown(f'<div class="dc">📋 {st.session_state.doc_type}</div>', unsafe_allow_html=True)
+st.markdown('<div class="slabel">படி 2 — ஆவணம் படிக்கவும்</div>', unsafe_allow_html=True)
+st.markdown('<div class="hint">💡 புரியாத சொல்லை கீழே dropdown-ல் தேர்வு செய்யுங்கள் அல்லது வலதில் தட்டச்சு செய்யுங்கள்</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="docbox">{st.session_state.text}</div>', unsafe_allow_html=True)
+tw = sorted({t for t in tokenize(st.session_state.text) if is_tamil(t) and len(t) > 1})
+if tw:
+st.markdown('<div class="slabel" style="margin-top:.7rem">சொல் தேர்வு</div>', unsafe_allow_html=True)
+pick = st.selectbox("p", ["— தேர்வு —"] + tw, label_visibility="collapsed", key="pick")
+if pick != "— தேர்வு —": st.session_state.word = pick
+else:
+st.info("மேலே PDF அல்லது படம் பதிவேற்றவும்.")
 
-    # Summary stats in sidebar
-    if st.session_state.summary_generated and st.session_state.summary_metrics:
-        m = st.session_state.summary_metrics
-        st.markdown(f"""
-        <div class="gov-sidebar-head"> சுருக்க புள்ளிவிவரம்</div>
-        <div class="gov-sidebar-body">
-          <div class="gov-stat-row">
-            <span class="gov-stat-label">ஒட்டுமொத்த மதிப்பெண்</span>
-            <span class="gov-stat-val">{m['overall']:.0f}/100</span>
-          </div>
-          <div class="gov-stat-row">
-            <span class="gov-stat-label">ROUGE-1</span>
-            <span class="gov-stat-val">{m['rouge_1']:.1f}%</span>
-          </div>
-          <div class="gov-stat-row">
-            <span class="gov-stat-label">ROUGE-2</span>
-            <span class="gov-stat-val">{m['rouge_2']:.1f}%</span>
-          </div>
-          <div class="gov-stat-row">
-            <span class="gov-stat-label">அமுக்க விகிதம்</span>
-            <span class="gov-stat-val">{m['compression_ratio']:.0f}%</span>
-          </div>
-          <div class="gov-stat-row">
-            <span class="gov-stat-label">சொல் உள்ளடக்கம்</span>
-            <span class="gov-stat-val">{m['keyword_coverage']:.0f}%</span>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+with right:
+st.markdown('<div class="slabel">சொல் பொருள் — தமிழில்</div>', unsafe_allow_html=True)
+typed = st.text_input("தமிழ் சொல்:", placeholder="உதா: விரும்பினால், இனிமேல், ஒப்பந்தம்", key="typed")
+if typed: st.session_state.word = typed.strip()
 
-    st.markdown("""
-    <div class="gov-sidebar-head"> பயன்பாட்டு முறை</div>
-    <div class="gov-sidebar-body">
-      <div class="gov-infobox">
-        PDF / DOCX / TXT பதிவேற்றவும்<br>
-        தமிழ் சொல்லை கிளிக் செய்யவும்<br>
-        சுருக்கம் தாவலில் சுருக்கம் காணுங்கள்<br>
-        ROUGE மதிப்பீடு தானாக காட்டும்<br>
-        உரையையும் ஒட்டலாம்
-      </div>
-      <div class="gov-warnbox">
-         அரசு ஆவணங்களை பாதுகாப்பாக பதிவேற்றவும். இந்த சேவை இலவசம்.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+w = st.session_state.word.strip()
 
-    st.markdown("""
-    <div class="gov-sidebar-head">தமிழ்நாடு சின்னங்கள்</div>
-    <div class="gov-sidebar-body">
-      <div class="gov-stat-row"><span class="gov-stat-label"> மலர்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">கொன்றை</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label"> பறவை</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">மரங்கொத்தி</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label"> மரம்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">பனை மரம்</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label"> விலங்கு</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">நீலகிரி தார்</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label"> மீன்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">இந்திய கணவாய்</span></div>
-      <div style="text-align:center;margin-top:.7rem;padding:.5rem;background:#e8f0fa;border-radius:2px">
-        <div style="font-family:'Noto Serif Tamil',serif;font-size:1.15rem;color:#003366;font-weight:700">செந்தமிழ் வாழ்க!</div>
-        <div style="font-size:.68rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;margin-top:.15rem">தமிழ் மொழி எப்போதும் வாழட்டும்</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+if w and is_tamil(clean_word(w)):
+with st.spinner("பகுப்பாய்கிறோம்…"):
+res = lookup(w, st.session_state.text)
+audio = speak(w)
 
-with col_c:
-    tab_upload, tab_paste, tab_summary = st.tabs([
-        " ஆவணம் பதிவேற்று | Upload",
-        " உரை ஒட்டு | Paste",
-        " தமிழ் சுருக்கம் | Summarize",
-    ])
+m = res["morph"]
+root = res["root"]
+d = res["dict"]
 
-    with tab_upload:
-        st.markdown('<div style="margin-top:.5rem"><div class="gov-upload-title">கோப்பு பதிவேற்றம் | File Upload</div>', unsafe_allow_html=True)
-        uploaded = st.file_uploader(
-            "PDF, DOCX, TXT", type=["pdf","docx","txt"],
-            label_visibility="collapsed", key="uploader",
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="mcard"><div class="mword">{res["clean"]}</div>', unsafe_allow_html=True)
 
-        if uploaded:
-            if uploaded.name != st.session_state.fname:
-                with st.spinner("ஆவணம் படிக்கிறது… | Reading document…"):
-                    blocks = extract_document(uploaded)
-                    st.session_state.blocks           = blocks
-                    st.session_state.fname            = uploaded.name
-                    st.session_state.sel_word         = ""
-                    st.session_state.meaning          = None
-                    st.session_state.paste_blocks     = []
-                    st.session_state.summary_text     = ""
-                    st.session_state.summary_metrics  = None
-                    st.session_state.summary_generated= False
+# ── Grammar analysis chips ──
+chips = []
+chips.append(f'<div class="g-chip c-root"><div class="g-lbl">வேர்ச்சொல்</div><div class="g-val">{root}</div></div>')
+if m["suffix"]:
+chips.append(f'<div class="g-chip c-sfx"><div class="g-lbl">விகுதி</div><div class="g-val">{m["suffix"]}</div></div>')
+pos_label = d["pos"] if d else (m["pos"] or "—")
+chips.append(f'<div class="g-chip c-pos"><div class="g-lbl">இலக்கணம்</div><div class="g-val">{pos_label}</div></div>')
+if m["sfx_meaning"]:
+chips.append(f'<div class="g-chip c-mood"><div class="g-lbl">விகுதி பொருள்</div><div class="g-val">{m["sfx_meaning"]}</div></div>')
+st.markdown(f'<div class="grammar-bar">{"".join(chips)}</div>', unsafe_allow_html=True)
 
-            blocks  = st.session_state.blocks
-            all_txt = " ".join(b["text"] for b in blocks)
-            tw_list = [clean_word(t) for t in all_txt.split() if is_tamil_word(t)]
-            tw_u    = list(dict.fromkeys(w for w in tw_list if w))
+# ── Meaning sections ──
+if res["found"]:
+if d:
+st.markdown(f'<div class="sec s1"><div class="sh">📖 தமிழ் பொருள்</div><div class="sb">{d["பொருள்"]}</div></div>', unsafe_allow_html=True)
+if d.get("எடுத்துக்காட்டு"):
+st.markdown(f'<div class="sec s2"><div class="sh">✏️ எடுத்துக்காட்டு வாக்கியம்</div><div class="sb">{d["எடுத்துக்காட்டு"]}</div></div>', unsafe_allow_html=True)
+if d.get("ஆவண பொருள்"):
+st.markdown(f'<div class="sec s3"><div class="sh">📋 ஆவணத்தில் பொருள்</div><div class="sb">{d["ஆவண பொருள்"]}</div></div>', unsafe_allow_html=True)
+if d.get("கவனிக்க"):
+st.markdown(f'<div class="sec s4"><div class="sh">⚠️ கவனிக்க வேண்டியது</div><div class="sb">{d["கவனிக்க"]}</div></div>', unsafe_allow_html=True)
+elif res["online"]:
+st.markdown(f'<div class="sec s1"><div class="sh">🔤 பொருள்</div><div class="sb">{res["online"]}</div></div>', unsafe_allow_html=True)
+if res["context"]:
+st.markdown(f'<div class="sec s4"><div class="sh">📄 உங்கள் ஆவணத்தில்</div><div class="sb">{res["context"]}</div></div>', unsafe_allow_html=True)
+else:
+st.markdown(f'<div class="nf">⚠️ <strong>{res["clean"]}</strong> — வேர்ச்சொல்: <strong>{root}</strong> — பொருள் கிடைக்கவில்லை.</div>', unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div class="stats-grid">
-              <div class="stat-box"><span class="stat-num">{len(blocks)}</span><span class="stat-lbl">பகுதிகள்</span></div>
-              <div class="stat-box"><span class="stat-num">{len(all_txt.split()):,}</span><span class="stat-lbl">மொத்த சொற்கள்</span></div>
-              <div class="stat-box"><span class="stat-num">{len(tw_u):,}</span><span class="stat-lbl">தமிழ் சொற்கள்</span></div>
-              <div class="stat-box"><span class="stat-num">{sum(1 for w in tw_u if tier2_json(w)):,}</span><span class="stat-lbl">அகராதியில்</span></div>
-            </div>
-            <div class="gov-doc-card">
-              <div class="gov-doc-titlebar">
-                <span class="gov-doc-filename">{uploaded.name}</span>
-                <span class="gov-doc-meta">
-                  {len(blocks)} பகுதிகள் · {len(tw_u)} தமிழ் சொற்கள் ·
-                  <span style="color:#1a6b2e">●</span> தயார்
-                </span>
-              </div>
-              <div class="gov-doc-body">
-                <div class="doc-content">{blocks_to_html(blocks)}</div>
-              </div>
-            </div>
-            <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-               அடிக்கோடிட்ட தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் காணுங்கள்
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="text-align:center;padding:3rem 2rem;background:white;
-                        border:1px dashed #c5cdd8;border-top:3px solid #003366;margin-top:.5rem">
-              <div style="font-size:2.8rem;margin-bottom:.8rem"></div>
-              <div style="font-family:'Noto Serif Tamil',serif;font-size:1.2rem;color:#003366;font-weight:700;margin-bottom:.4rem">
-                தமிழ் ஆவணத்தை பதிவேற்றுங்கள்
-              </div>
-              <div style="font-size:.83rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-                PDF · Microsoft Word (DOCX) · Plain Text (TXT)
-              </div>
-              <div style="margin-top:1.5rem;padding:1rem 1.5rem;background:#f5f7fa;display:inline-block;text-align:left;border-left:3px solid #e07b00">
-                <div style="font-family:'Noto Serif Tamil',serif;font-size:.95rem;color:#1a5276;font-weight:600">
-                  "யாதும் ஊரே யாவரும் கேளிர்"
-                </div>
-                <div style="font-size:.72rem;color:#7a8a99;margin-top:.3rem;font-family:'Noto Sans Tamil',sans-serif">
-                  — புறநானூறு | All towns are our own; all people our kin.
-                </div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-    with tab_paste:
-        st.markdown('<div style="margin-top:.5rem"><div class="gov-upload-title">உரை ஒட்டு | Paste Text</div>', unsafe_allow_html=True)
-        pasted = st.text_area(
-            "உரை", height=140,
-            placeholder="தமிழ் உரையை இங்கே ஒட்டவும் அல்லது தட்டச்சு செய்யவும்...\nPaste or type Tamil text here...",
-            key="paste_input", label_visibility="collapsed",
-        )
-        if st.button(" உரையை படி | Read Text", key="paste_btn"):
-            if pasted.strip():
-                blocks = [{"type":"para","text":l.strip()} for l in pasted.strip().splitlines() if l.strip()]
-                st.session_state.paste_blocks     = blocks
-                st.session_state.blocks           = blocks
-                st.session_state.fname            = "ஒட்டிய உரை"
-                st.session_state.sel_word         = ""
-                st.session_state.meaning          = None
-                st.session_state.summary_text     = ""
-                st.session_state.summary_metrics  = None
-                st.session_state.summary_generated= False
+if audio:
+st.markdown("**🔊 உச்சரிப்பு**")
+st.audio(audio, format="audio/mp3")
 
-        if st.session_state.paste_blocks:
-            pb  = st.session_state.paste_blocks
-            pt  = " ".join(b["text"] for b in pb)
-            ptw = list(dict.fromkeys(clean_word(t) for t in pt.split() if is_tamil_word(t)))
-            st.markdown(f"""
-            <div class="stats-grid">
-              <div class="stat-box"><span class="stat-num">{len(pb)}</span><span class="stat-lbl">வரிகள்</span></div>
-              <div class="stat-box"><span class="stat-num">{len(pt.split())}</span><span class="stat-lbl">மொத்த சொற்கள்</span></div>
-              <div class="stat-box"><span class="stat-num">{len(ptw)}</span><span class="stat-lbl">தமிழ் சொற்கள்</span></div>
-              <div class="stat-box"><span class="stat-num">{sum(1 for w in ptw if tier2_json(w))}</span><span class="stat-lbl">அகராதியில்</span></div>
-            </div>
-            <div class="gov-doc-card">
-              <div class="gov-doc-titlebar">
-                <span class="gov-doc-filename"> ஒட்டிய உரை | Pasted Text</span>
-                <span class="gov-doc-meta">{len(ptw)} தமிழ் சொற்கள்</span>
-              </div>
-              <div class="gov-doc-body">
-                <div class="doc-content">{blocks_to_html(pb)}</div>
-              </div>
-            </div>
-            <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-               தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் உருவாக்குங்கள்
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with tab_summary:
-        st.markdown('<div style="margin-top:.5rem">', unsafe_allow_html=True)
-        source_text = "\n".join(b["text"] for b in st.session_state.blocks)
-        tamil_words_in_doc = [clean_word(w) for w in source_text.split() if is_tamil_word(w)]
-
-        if not source_text.strip():
-            st.markdown("""
-            <div style="text-align:center;padding:2.5rem 1.5rem;background:white;
-                        border:1px dashed #c5cdd8;border-top:3px solid #1a6b2e;margin-top:.5rem">
-              <div style="font-size:2.4rem;margin-bottom:.7rem">📝</div>
-              <div style="font-family:'Noto Serif Tamil',serif;font-size:1.1rem;color:#003366;font-weight:700;margin-bottom:.4rem">
-                முதலில் ஆவணம் பதிவேற்றுங்கள்
-              </div>
-              <div style="font-size:.82rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;">
-                "பதிவேற்று" அல்லது "ஒட்டு" தாவலில் உரை சேர்த்த பின் இங்கே வாருங்கள்.<br>
-                Upload or paste text first, then come here to summarize.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Controls row
-            ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 1])
-            with ctrl1:
-                summ_method = st.selectbox(
-                    "சுருக்க முறை | Method",
-                    options=["hybrid", "tfidf", "position", "abstractive_ai"],
-                    format_func=lambda x: {
-                        "hybrid":        " Hybrid (TF-IDF + Position)",
-                        "tfidf":         " TF-IDF மட்டும்",
-                        "position":      " நிலை அடிப்படையில்",
-                        "abstractive_ai":" AI சுருக்கம் (Claude)",
-                    }[x],
-                    key="summ_method_sel",
-                    label_visibility="visible",
-                )
-            with ctrl2:
-                if summ_method == "abstractive_ai":
-                    summ_length = st.selectbox(
-                        "நீளம் | Length",
-                        options=["short","medium","long"],
-                        format_func=lambda x: {"short":"குறுகிய (2–3 வாக்கியம்)",
-                                               "medium":"நடுத்தர (4–6 வாக்கியம்)",
-                                               "long":"நீண்ட (8–10 வாக்கியம்)"}[x],
-                        index=1, key="summ_len_sel", label_visibility="visible",
-                    )
-                else:
-                    summ_ratio = st.slider(
-                        "சுருக்க விகிதம் | Compression ratio",
-                        min_value=10, max_value=70, value=40, step=5,
-                        format="%d%%", key="summ_ratio_sl", label_visibility="visible",
-                    )
-            with ctrl3:
-                st.markdown("<div style='margin-top:1.6rem'>", unsafe_allow_html=True)
-                run_btn = st.button("▶ சுருக்கு | Summarize", key="run_summary_btn")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            if run_btn:
-                with st.spinner("சுருக்கம் உருவாக்குகிறது… | Generating summary…"):
-                    if summ_method == "abstractive_ai":
-                        summ_out = abstractive_summarize_ai(source_text, length_hint=summ_length)
-                        if summ_out:
-                            st.session_state.summary_text    = summ_out
-                            st.session_state.summary_method  = "🤖 AI சுருக்கம் (Claude)"
-                            st.session_state.summary_metrics = evaluate_summary(
-                                source_text, summ_out, "AI Abstractive"
-                            )
-                            st.session_state.summary_generated = True
-                        else:
-                            st.error("AI சுருக்கம் தோல்வியடைந்தது. Extractive முறையை முயற்சிக்கவும்.")
-                    else:
-                        ratio = summ_ratio / 100.0
-                        summ_out, sel_idx, _ = extractive_summarize(source_text, ratio=ratio, method=summ_method)
-                        method_labels = {
-                            "hybrid":   "Hybrid Extractive",
-                            "tfidf":    "TF-IDF Extractive",
-                            "position": "Position-based Extractive",
-                        }
-                        st.session_state.summary_text    = summ_out
-                        st.session_state.summary_method  = method_labels.get(summ_method, summ_method)
-                        st.session_state.summary_metrics = evaluate_summary(
-                            source_text, summ_out, method_labels.get(summ_method,"")
-                        )
-                        st.session_state.summary_generated = True
-
-            # Display summary
-            if st.session_state.summary_generated and st.session_state.summary_text:
-                summ_wc   = len(st.session_state.summary_text.split())
-                orig_wc   = len(source_text.split())
-                cr_display= round((1 - summ_wc / orig_wc) * 100) if orig_wc else 0
-
-                st.markdown(f"""
-                <div class="stats-grid" style="margin-top:.7rem">
-                  <div class="stat-box"><span class="stat-num">{orig_wc:,}</span><span class="stat-lbl">மூல சொற்கள்</span></div>
-                  <div class="stat-box"><span class="stat-num">{summ_wc:,}</span><span class="stat-lbl">சுருக்க சொற்கள்</span></div>
-                  <div class="stat-box" style="border-top-color:#1a6b2e"><span class="stat-num" style="color:#1a6b2e">{cr_display}%</span><span class="stat-lbl">அமுக்கம்</span></div>
-                  <div class="stat-box" style="border-top-color:#e07b00">
-                    <span class="stat-num" style="color:#e07b00">
-                      {st.session_state.summary_metrics['overall']:.0f}
-                    </span>
-                    <span class="stat-lbl">மதிப்பெண் /100</span>
-                  </div>
-                </div>
-
-                <div class="sum-card">
-                  <div class="sum-titlebar">
-                    <span>தமிழ் சுருக்கம் | Tamil Summary</span>
-                    <span style="font-size:.68rem;color:#b8ddc4">{st.session_state.summary_method}</span>
-                  </div>
-                  <div class="sum-body">
-                    <span class="sum-method-badge">✓ {st.session_state.summary_method}</span>
-                    <div style="font-family:'Noto Sans Tamil',sans-serif;font-size:1.02rem;line-height:2.1;color:var(--tn-text)">
-                      {st.session_state.summary_text}
-                    </div>
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Metrics rendered below summary in the center column
-                if st.session_state.summary_metrics:
-                    st.markdown(render_metrics_panel(st.session_state.summary_metrics),
-                                unsafe_allow_html=True)
-
-                # Compare multiple methods button
-                if summ_method != "abstractive_ai":
-                    st.markdown('<div style="margin-top:.6rem">', unsafe_allow_html=True)
-                    if st.button("அனைத்து முறைகளையும் ஒப்பிடு | Compare All Extractive Methods",
-                                 key="compare_btn"):
-                        with st.spinner("ஒப்பீடு செய்கிறது…"):
-                            ratio_c = summ_ratio / 100.0
-                            methods = [("hybrid","Hybrid"),("tfidf","TF-IDF"),("position","Position")]
-                            compare_rows = ""
-                            for m_key, m_lbl in methods:
-                                s_out, _, _ = extractive_summarize(source_text, ratio=ratio_c, method=m_key)
-                                ev = evaluate_summary(source_text, s_out, m_lbl)
-                                gl, gc = grade_score(ev["overall"])
-                                compare_rows += f"""
-                                <tr style="font-family:'Noto Sans Tamil',sans-serif;font-size:.75rem">
-                                  <td style="padding:.4rem .6rem;font-weight:600">{m_lbl}</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_1']:.1f}%</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_2']:.1f}%</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_l']:.1f}%</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">{ev['keyword_coverage']:.0f}%</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">{ev['compression_ratio']:.0f}%</td>
-                                  <td style="padding:.4rem .6rem;text-align:center;font-weight:700;color:var(--tn-navy)">{ev['overall']:.0f}</td>
-                                  <td style="padding:.4rem .6rem;text-align:center">
-                                    <span style="font-size:.65rem;padding:.12rem .38rem;border-radius:2px;font-weight:600;
-                                      background:{'#d4edda' if ev['overall']>=75 else '#d1ecf1' if ev['overall']>=55 else '#fff3cd' if ev['overall']>=35 else '#f8d7da'};
-                                      color:{'#155724' if ev['overall']>=75 else '#0c5460' if ev['overall']>=55 else '#856404' if ev['overall']>=35 else '#721c24'}">
-                                      {gl}
-                                    </span>
-                                  </td>
-                                </tr>"""
-                            st.markdown(f"""
-                            <div class="metrics-panel" style="margin-top:.5rem">
-                              <div class="metrics-head">முறை ஒப்பீடு | Method Comparison</div>
-                              <div style="overflow-x:auto">
-                              <table style="width:100%;border-collapse:collapse;font-size:.75rem">
-                                <thead>
-                                  <tr style="background:var(--tn-gray1);font-family:'Noto Sans Tamil',sans-serif;font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--tn-text2)">
-                                    <th style="padding:.4rem .6rem;text-align:left">முறை</th>
-                                    <th style="padding:.4rem .6rem">ROUGE-1</th>
-                                    <th style="padding:.4rem .6rem">ROUGE-2</th>
-                                    <th style="padding:.4rem .6rem">ROUGE-L</th>
-                                    <th style="padding:.4rem .6rem">KW Cov.</th>
-                                    <th style="padding:.4rem .6rem">Compress</th>
-                                    <th style="padding:.4rem .6rem">Score</th>
-                                    <th style="padding:.4rem .6rem">Grade</th>
-                                  </tr>
-                                </thead>
-                                <tbody>{compare_rows}</tbody>
-                              </table>
-                              </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-            elif not run_btn:
-                st.markdown("""
-                <div style="text-align:center;padding:2rem 1rem;background:white;
-                            border:1px solid #c5cdd8;border-top:3px solid #1a6b2e;margin-top:.7rem">
-                  <div style="font-size:2rem;margin-bottom:.6rem"></div>
-                  <div style="font-family:'Noto Serif Tamil',serif;font-size:1rem;color:#003366;font-weight:700;margin-bottom:.3rem">
-                    சுருக்க முறையை தேர்வு செய்யுங்கள்
-                  </div>
-                  <div style="font-size:.78rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;line-height:1.7">
-                    Hybrid · TF-IDF · Position-based · AI (Claude) ஆகிய முறைகளில் தேர்ந்தெடுங்கள்.<br>
-                    சுருக்கத்திற்கு பின் ROUGE மதிப்பீடு தானாக காட்டும்.
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-with col_r:
-    st.markdown('<div class="gov-meaning-head"> சொல் பொருள் | Word Meaning</div>', unsafe_allow_html=True)
-
-    st.markdown('<div style="padding:.6rem .5rem .3rem"><div class="gov-search-label">🔍 சொல் தேடல் | Search Word</div></div>', unsafe_allow_html=True)
-    manual = st.text_input(
-        "சொல்", placeholder="e.g. அன்பு, வாடகை, உரிமை…",
-        key="manual_input", label_visibility="collapsed",
-    )
-    if st.button("தேடு | Search", key="search_btn"):
-        if manual.strip():
-            w = manual.strip()
-            with st.spinner("தேடுகிறது…"):
-                st.session_state.meaning  = lookup(w)
-                st.session_state.sel_word = w
-            if w not in st.session_state.history:
-                st.session_state.history.insert(0, w)
-                st.session_state.history = st.session_state.history[:20]
-
-    st.markdown('<div style="padding:0 .5rem">', unsafe_allow_html=True)
-
-    if st.session_state.sel_word and st.session_state.meaning:
-        st.markdown(meaning_card_html(st.session_state.sel_word, st.session_state.meaning),
-                    unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div class="panel-idle">
-          <div class="panel-idle-icon"></div>
-          <div class="panel-idle-text">
-            ஆவணத்திலுள்ள எந்த தமிழ் சொல்லையும் கிளிக் செய்யுங்கள்.<br><br>
-            Click any Tamil word in the document to see its meaning here.<br><br>
-            அல்லது மேலே தட்டச்சு செய்யவும்.<br>
-            Or type a word above.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    if st.session_state.history:
-        st.markdown(f'<div class="hist-label" style="padding:.4rem .2rem 0">🕐 சமீபத்திய தேடல்கள்</div>', unsafe_allow_html=True)
-        chips = "".join(f'<span class="hist-chip">{w}</span>' for w in st.session_state.history)
-        st.markdown(f'<div style="margin-bottom:.4rem">{chips}</div>', unsafe_allow_html=True)
-
-        pick = st.selectbox(
-            "மீண்டும் தேடு", ["— தேர்ந்தெடுங்கள் —"] + st.session_state.history,
-            key="hist_pick", label_visibility="collapsed",
-        )
-        if pick and pick != "— தேர்ந்தெடுங்கள் —" and pick != st.session_state.sel_word:
-            st.session_state.sel_word = pick
-            with st.spinner(""): st.session_state.meaning = lookup(pick)
-            st.rerun()
-
-    st.markdown('<div style="margin-top:.6rem"><div class="gov-search-label">அகராதி | Dictionary Browse</div></div>', unsafe_allow_html=True)
-    if TDICT:
-        letters = sorted({w[0] for w in TDICT if w})
-        pick_l  = st.selectbox("எழுத்தால் தேடு", ["எல்லாம்"] + letters,
-                               key="browse_letter", label_visibility="collapsed")
-        filtered = {k:v for k,v in TDICT.items() if pick_l=="எல்லாம்" or k.startswith(pick_l)}
-        st.caption(f"{len(filtered):,} சொற்கள்")
-        for wk, wd in list(filtered.items())[:6]:
-            en = wd.get("english","")[:35]
-            with st.expander(f"{wk} — {en}"):
-                st.markdown(meaning_card_html(wk,{**wd,"tier":2,"label":" உள்ளக அகராதி"}),
-                            unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+elif w:
+st.info("தமிழ் எழுத்தில் சொல்லை தட்டச்சு செய்யவும்.")
+else:
 st.markdown("""
-<div class="gov-footer">
-  <div>
-    © 2026 தமிழ்நாடு அரசு | Government of Tamil Nadu · All Rights Reserved<br>
-    <span style="color:#556677">
-      தமிழ் மொழி உதவியாளர் v4.0 · 4-நிலை பொருள் தேடல் · தமிழ் சுருக்கம் · ROUGE மதிப்பீடு ·
-      Developed for Tamil Language Accessibility
-    </span>
-  </div>
-  <div class="gov-footer-links">
-    <a href="#">தனியுரிமை கொள்கை</a>
-    <a href="#">பயன்பாட்டு விதிமுறைகள்</a>
-    <a href="#">அணுகல் தகவல்</a>
-    <a href="#">தொடர்பு கொள்ள</a>
-    <a href="#">Sitemap</a>
-  </div>
+<div class="mcard" style="text-align:center;color:#ccc;padding:2.5rem 1rem;">
+<div style="font-size:2.5rem">🔍</div>
+<div style="font-family:'Noto Sans Tamil',sans-serif;font-size:1rem;margin-top:.4rem;color:#999;">
+மேலே சொல்லை தட்டச்சு செய்யுங்கள்
 </div>
+</div>""", unsafe_allow_html=True)
+
+st.caption(f"📚 {APP_VERSION} | 100% இலவசம்")
+
+with st.expander("🛠️ Debug — பொருள் தேட பயன்படும் வழி"):
+if w and is_tamil(clean_word(w)):
+cw = clean_word(w)
+st.code(f"உள்ளீடு: {repr(w)}\nசுத்தமான சொல்: {repr(cw)}\nவேர்ச்சொல்: {repr(res['root'])}", language="text")
+in_dict = dict_lookup(res['root']) or dict_lookup(cw)
+st.write("📚 அகராதியில்:", "✅ கிடைத்தது" if in_dict else "❌ இல்லை")
+st.write("🌐 ஆன்லைன்:", "✅ கிடைத்தது" if res.get('online') else "❌ இல்லை")
+else:
+st.write("சொல் தேடவில்லை")
+
+with t_deploy:
+st.markdown("## 🚀 GitHub → Streamlit Cloud")
+st.info("✅ 100% இலவசம். API key தேவையில்லை.")
+st.markdown("""
+<div class="step"><span class="num">1</span><a href="https://github.com" target="_blank">github.com</a> → Sign up</div>
+<div class="step"><span class="num">2</span>New repository → <code>tamil-doc-reader</code> | Public → Create</div>
+<div class="step"><span class="num">3</span><code>app.py</code>, <code>requirements.txt</code>, <code>packages.txt</code> upload → Commit</div>
+<div class="step"><span class="num">4</span><a href="https://share.streamlit.io" target="_blank">share.streamlit.io</a> → New app → File: <code>app.py</code> → Deploy!</div>
+<div class="step"><span class="num">5</span>3–5 நிமிடம் → இலவச URL ✅</div>
 """, unsafe_allow_html=True)
+c1, c2 = st.columns(2)
+with c1:
+st.markdown("**`requirements.txt`**")
+st.code("streamlit>=1.32.0\npytesseract>=0.3.10\nPillow>=10.0.0\npdfplumber>=0.10.0\npdf2image>=1.16.0\ngTTS>=2.5.0\nrequests>=2.31.0\nbeautifulsoup4>=4.12.0\ndeep-translator>=1.11.4\nnumpy>=1.24.0", language="text")
+with c2:
+st.markdown("**`packages.txt`**")
+st.code("tesseract-ocr\ntesseract-ocr-tam\ntesseract-ocr-eng\npoppler-utils", language="text")
+
+st.markdown('<div style="text-align:center;font-size:.74rem;color:#bbb;margin-top:2rem;padding-top:.8rem;border-top:1px solid #ddd4c4;">தமிழ் அரசு ஆவண வாசகன் v10 · Tamil Morphological Engine · 100% Free</div>', unsafe_allow_html=True)     
