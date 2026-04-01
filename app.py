@@ -1,9 +1,3 @@
-"""
-Tamil Nadu Government — Tamil Reading & Language Assistant
-Official Style: TN Govt Portal aesthetic with Tamil Nadu state symbols
-Enhanced: Tamil Summarization + Evaluation Metrics
-"""
-
 import streamlit as st
 import json, re, io, math
 from pathlib import Path
@@ -15,10 +9,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# ══════════════════════════════════════════════════════════════════════
-# STYLES — Tamil Nadu Government Portal Design
-# ══════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@300;400;500;600;700&family=Noto+Serif+Tamil:wght@400;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
@@ -55,7 +45,6 @@ st.markdown("""
 #MainMenu, footer, header, .stDeployButton,
 [data-testid="stToolbar"], [data-testid="stDecoration"] { visibility: hidden !important; display: none !important; }
 
-/* ══ TOP STRIP ══ */
 .gov-topstrip {
   background: var(--tn-navy2);
   color: #ccdeff;
@@ -68,7 +57,6 @@ st.markdown("""
 }
 .gov-topstrip-links { display: flex; gap: 1rem; color: #88aadd; }
 
-/* ══ MAIN HEADER ══ */
 .gov-header {
   background: var(--tn-navy);
   border-bottom: 4px solid var(--tn-saffron);
@@ -121,7 +109,6 @@ st.markdown("""
 }
 .gov-badge-dot { width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block; }
 
-/* ══ NAV ══ */
 .gov-nav {
   background: var(--tn-blue);
   border-bottom: 1px solid var(--tn-navy2);
@@ -139,7 +126,6 @@ st.markdown("""
 .gov-nav-item.active { color: white; border-bottom-color: var(--tn-saffron); font-weight: 500; }
 .gov-nav-sep { color: rgba(255,255,255,.2); padding: 0 .1rem; font-size: .7rem; }
 
-/* ══ BREADCRUMB ══ */
 .gov-breadcrumb {
   background: var(--tn-white); border-bottom: 1px solid var(--tn-border);
   padding: .4rem 1.5rem; font-size: .73rem; color: var(--tn-gray3);
@@ -148,7 +134,6 @@ st.markdown("""
 }
 .gov-bc-link { color: var(--tn-blue); }
 
-/* ══ TICKER ══ */
 .tn-ticker {
   background: var(--tn-saffron); color: var(--tn-navy2);
   font-family: 'Noto Sans Tamil', sans-serif; font-size: .78rem;
@@ -163,7 +148,6 @@ st.markdown("""
 .tn-ticker-content { animation: ticker 50s linear infinite; display: inline-block; }
 @keyframes ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-60%)} }
 
-/* ══ LEFT SIDEBAR ══ */
 .gov-sidebar-head {
   background: var(--tn-gray1); border-left: 4px solid var(--tn-navy);
   padding: .5rem .9rem; font-size: .74rem; font-weight: 600; color: var(--tn-navy);
@@ -188,7 +172,6 @@ st.markdown("""
   font-family: 'Noto Sans Tamil', sans-serif; margin: .4rem 0;
 }
 
-/* ══ STATS GRID ══ */
 .stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; margin-bottom:.9rem; }
 .stat-box {
   background: var(--tn-white); border: 1px solid var(--tn-border);
@@ -197,7 +180,6 @@ st.markdown("""
 .stat-num { font-family:'Noto Serif Tamil',serif; font-size:1.25rem; font-weight:700; color:var(--tn-navy); display:block; }
 .stat-lbl { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; }
 
-/* ══ DOCUMENT CARD ══ */
 .gov-doc-card {
   background: var(--tn-white); border: 1px solid var(--tn-border);
   border-top: 3px solid var(--tn-saffron);
@@ -210,7 +192,6 @@ st.markdown("""
 .gov-doc-meta { font-size:.68rem; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; }
 .gov-doc-body { padding:1rem 1.4rem; max-height:60vh; overflow-y:auto; }
 
-/* ══ READING TEXT ══ */
 .doc-content { font-family:'Noto Sans Tamil',sans-serif; font-size:1.05rem; line-height:2.2; color:var(--tn-text); }
 .doc-para { margin-bottom:1rem; text-align:justify; }
 .doc-heading {
@@ -221,7 +202,6 @@ st.markdown("""
 .doc-list-item { padding:.15rem 0 .15rem 1.2rem; position:relative; }
 .doc-list-item::before { content:'▸'; position:absolute; left:0; color:var(--tn-saffron); font-size:.8rem; top:.3rem; }
 
-/* ══ CLICKABLE WORD ══ */
 .tw {
   cursor:pointer; border-bottom:2px solid var(--tn-saffron); color:var(--tn-text);
   padding:0 1px; transition:background .12s,color .12s; display:inline;
@@ -229,7 +209,6 @@ st.markdown("""
 .tw:hover { background:#fff3cc; color:var(--tn-navy); border-bottom-color:var(--tn-navy); }
 .tw.active { background:#ffeaa0; color:var(--tn-navy2); border-bottom:2.5px solid var(--tn-navy); font-weight:600; }
 
-/* ══ MEANING PANEL ══ */
 .gov-meaning-head {
   background: var(--tn-navy); color:white;
   padding:.65rem 1rem; font-family:'Noto Sans Tamil',sans-serif;
@@ -279,7 +258,6 @@ st.markdown("""
 .hist-chip:hover { background:var(--tn-navy); color:white; }
 .gov-search-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--tn-navy); font-family:'Noto Sans Tamil',sans-serif; font-weight:600; margin-bottom:.35rem; }
 
-/* ══ UPLOAD ══ */
 .gov-upload-title {
   font-size:.76rem; font-weight:600; color:var(--tn-navy);
   font-family:'Noto Sans Tamil',sans-serif; text-transform:uppercase; letter-spacing:.05em;
@@ -287,7 +265,6 @@ st.markdown("""
 }
 .gov-upload-title::before { content:''; display:inline-block; width:3px; height:13px; background:var(--tn-saffron); border-radius:1px; }
 
-/* ══ SUMMARY STYLES ══ */
 .sum-card {
   background: var(--tn-white); border: 1px solid var(--tn-border);
   border-top: 3px solid var(--tn-green);
@@ -312,7 +289,6 @@ st.markdown("""
   margin-bottom:.6rem;
 }
 
-/* ══ METRICS STYLES ══ */
 .metrics-panel {
   background: var(--tn-white); border: 1px solid var(--tn-border);
   border-top: 3px solid var(--tn-navy); margin-top: .6rem;
@@ -384,7 +360,6 @@ st.markdown("""
 }
 .kw-chip.in-summary { background:#d4edda; border-color:#b8ddc4; color:#155724; }
 
-/* ══ STREAMLIT OVERRIDES ══ */
 .stTextInput>div>div>input, .stTextArea>div>div>textarea {
   font-family:'Noto Sans Tamil',sans-serif !important; font-size:.98rem !important;
   border:1.5px solid var(--tn-border) !important; border-radius:2px !important;
@@ -411,7 +386,6 @@ st.markdown("""
 ::-webkit-scrollbar-track { background:var(--tn-gray1); }
 ::-webkit-scrollbar-thumb { background:var(--tn-gray2); border-radius:2px; }
 
-/* ══ FOOTER ══ */
 .gov-footer {
   background:var(--tn-navy2); color:#8899aa;
   padding:.85rem 1.5rem; font-size:.7rem;
@@ -424,9 +398,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════
-# HELPERS
-# ══════════════════════════════════════════════════════════════════════
 _TAMIL_RE   = re.compile(r'[\u0B80-\u0BFF]+')
 _PUNC_STRIP = re.compile(r'^[^\u0B80-\u0BFF]+|[^\u0B80-\u0BFF]+$')
 
@@ -450,9 +421,6 @@ TDICT = load_dict()
 TAMIL_VOWELS     = list("அஆஇஈஉஊஎஏஐஒஓஔ")
 TAMIL_CONSONANTS = list("கசடதபறஞஜஸஷஹணனநமயரலவழளஃ")
 
-# ══════════════════════════════════════════════════════════════════════
-# DOCUMENT EXTRACTION
-# ══════════════════════════════════════════════════════════════════════
 def extract_docx(data):
     from docx import Document
     doc = Document(io.BytesIO(data))
@@ -501,9 +469,6 @@ def extract_document(uploaded):
     except Exception as e:
         st.error(f"Extraction error: {e}"); return []
 
-# ══════════════════════════════════════════════════════════════════════
-# RENDER
-# ══════════════════════════════════════════════════════════════════════
 def tokenize_html(text):
     parts = []
     for tok in text.split():
@@ -530,21 +495,18 @@ def blocks_to_html(blocks):
             out.append(f'<div class="doc-para">{txt}</div>')
     return "\n".join(out)
 
-# ══════════════════════════════════════════════════════════════════════
-# LOOKUP
-# ══════════════════════════════════════════════════════════════════════
 def tier2_json(word):
     w = clean_word(word)
     if w in TDICT:
         e = TDICT[w]
         return {"english":e.get("english",""),"tamil":e.get("tamil",""),
-                "example":e.get("example",""),"tier":2,"label":"📖 உள்ளக அகராதி"}
+                "example":e.get("example",""),"tier":2,"label":"உள்ளக அகராதி"}
     for n in (1,2):
         s = w[:-n]
         if len(s) >= 2 and s in TDICT:
             e = TDICT[s]
             return {"english":e.get("english","")+" (வேர்ச்சொல்)","tamil":e.get("tamil",""),
-                    "example":e.get("example",""),"tier":2,"label":"📖 அகராதி (வேர்)"}
+                    "example":e.get("example",""),"tier":2,"label":"அகராதி (வேர்)"}
     return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -609,7 +571,7 @@ def lookup(word):
     r = tier4_ml(word)
     if r: return r
     return {"english":"பொருள் கண்டுபிடிக்கவில்லை","tamil":"Meaning not found",
-            "definition":"","example":"","tier":0,"label":"❌ கண்டுபிடிக்கவில்லை"}
+            "definition":"","example":"","tier":0,"label":"கண்டுபிடிக்கவில்லை"}
 
 def meaning_card_html(word, r):
     tier = r.get("tier",0)
@@ -621,10 +583,10 @@ def meaning_card_html(word, r):
     lbl  = r.get("label","")
 
     ta_sec = (f'<div class="mcard-sec-lbl">தமிழ் விளக்கம்</div>'
-              f'<div class="mcard-ta">🌿 {ta}</div>') if ta else ""
+              f'<div class="mcard-ta"> {ta}</div>') if ta else ""
     def_sec = (f'<div class="mcard-sec-lbl">வரையறை | Definition</div>'
                f'<div class="mcard-def">{defn}</div>') if defn and defn != en and len(defn)>12 else ""
-    ex_sec = f'<div class="mcard-ex">📜 {ex}</div>' if ex else ""
+    ex_sec = f'<div class="mcard-ex"> {ex}</div>' if ex else ""
 
     return f"""
     <div class="mcard">
@@ -637,9 +599,6 @@ def meaning_card_html(word, r):
       </div>
     </div>"""
 
-# ══════════════════════════════════════════════════════════════════════
-# SUMMARIZATION ENGINE
-# ══════════════════════════════════════════════════════════════════════
 
 def get_tamil_sentences(text):
     """
@@ -810,9 +769,6 @@ def abstractive_summarize_ai(text, length_hint="medium"):
     except Exception as e:
         return None
 
-# ══════════════════════════════════════════════════════════════════════
-# EVALUATION METRICS
-# ══════════════════════════════════════════════════════════════════════
 
 def get_ngrams(tokens, n):
     return Counter(tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1))
@@ -992,36 +948,28 @@ def render_metrics_panel(metrics):
     return (
         f'<div style="background:#fff;border:1px solid #c5cdd8;border-top:3px solid #003366;margin-top:.6rem;">' +
         f'<div style="background:#002244;color:white;padding:.5rem .9rem;font-family:Noto Sans Tamil,sans-serif;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">' +
-        f'📊 சுருக்க மதிப்பீடு | Summary Evaluation</div>' +
+        f' சுருக்க மதிப்பீடு | Summary Evaluation</div>' +
         f'<div style="padding:.7rem .8rem;">' +
-        # Overall score box
         f'<div style="background:#003366;color:white;padding:.6rem .9rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">' +
         f'<div><div style="font-size:2rem;font-weight:700;font-family:Noto Serif Tamil,serif;">{overall:.0f}</div>' +
         f'<div style="font-size:.68rem;color:#aabbd4;font-family:Noto Sans Tamil,sans-serif;margin-top:.1rem;">ஒட்டுமொத்த மதிப்பெண் | Overall Score (0–100)</div></div>' +
         f'<div><span style="font-size:1.1rem;font-weight:700;padding:.3rem .7rem;border-radius:2px;background:{bg_o};color:{fg_o};">{lbl_o}</span>' +
         f'<div style="font-size:.65rem;color:#aabbd4;margin-top:.3rem;font-family:Noto Sans Tamil,sans-serif;">{method_lbl}</div></div>' +
         f'</div>' +
-        # Metric rows
         rows_html +
-        # Compression
         f'<div style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.7rem;font-family:Noto Sans Tamil,sans-serif;color:#3a4a5a;">' +
         f'<span>அமுக்க விகிதம் | Compression</span>' +
         f'<span style="font-size:1.1rem;font-weight:700;color:{cr_color};">{cr:.1f}%</span>' +
         f'<span style="color:#7a8a99;">({n_orig} → {n_sum} வாக்கியங்கள்)</span></div>' +
-        # Keywords
         f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;padding:.5rem .7rem;margin-top:.4rem;">' +
         f'<div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;margin-bottom:.35rem;">🔑 முக்கிய சொற்கள் (பச்சை = சுருக்கத்தில் உள்ளன)</div>' +
         (kw_chips if kw_chips else '<span style="font-size:.72rem;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;">தமிழ் உரை இல்லை</span>') +
         f'</div>' +
-        # Summary note
         f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;border-left:4px solid #e07b00;padding:.55rem .8rem;margin-top:.5rem;font-size:.74rem;color:#3a4a5a;font-family:Noto Sans Tamil,sans-serif;line-height:1.6;">' +
-        f'📝 {summary_note}</div>' +
+        f'{summary_note}</div>' +
         f'</div></div>'
     )
 
-# ══════════════════════════════════════════════════════════════════════
-# SESSION STATE
-# ══════════════════════════════════════════════════════════════════════
 for k,v in [("blocks",[]),("sel_word",""),("meaning",None),
             ("history",[]),("fname",""),("paste_blocks",[]),
             ("summary_text",""),("summary_metrics",None),
@@ -1039,14 +987,11 @@ try:
             st.session_state.history = st.session_state.history[:20]
 except Exception: pass
 
-# ══════════════════════════════════════════════════════════════════════
-# GOVERNMENT HEADER
-# ══════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="gov-topstrip">
   <div>🇮🇳 தமிழ்நாடு அரசு · Government of Tamil Nadu · India</div>
   <div class="gov-topstrip-links">
-    <span>📅 30 மார்ச் 2026</span>
+    <span>30 மார்ச் 2026</span>
     <span style="color:#445566">|</span>
     <span>Screen Reader</span>
     <span>A+ A A-</span>
@@ -1072,18 +1017,18 @@ st.markdown("""
   </div>
   <div class="gov-header-badges">
     <div class="gov-badge"><span class="gov-badge-dot"></span>LIVE SYSTEM</div>
-    <div class="gov-badge">🏛️ TN GOVT</div>
-    <div class="gov-badge">🔒 SECURE</div>
+    <div class="gov-badge"> TN GOVT</div>
+    <div class="gov-badge"> SECURE</div>
   </div>
 </div>
 <div class="gov-nav">
-  <a class="gov-nav-item active">🏠 முகப்பு</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">📄 ஆவண வாசிப்பு</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">🔍 சொல் தேடல்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">📝 சுருக்கம்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">📚 அகராதி</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">📊 புள்ளிவிவரம்</a><span class="gov-nav-sep">|</span>
-  <a class="gov-nav-item">ℹ️ உதவி</a>
+  <a class="gov-nav-item active"> முகப்பு</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> ஆவண வாசிப்பு</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> சொல் தேடல்</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> சுருக்கம்</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> அகராதி</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> புள்ளிவிவரம்</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item"> உதவி</a>
 </div>
 <div class="gov-breadcrumb">
   <span class="gov-bc-link">முகப்பு</span> ›
@@ -1091,7 +1036,7 @@ st.markdown("""
   <span>தமிழ் மொழி உதவியாளர்</span>
 </div>
 <div class="tn-ticker">
-  <span class="tn-ticker-label">📢 அறிவிப்பு</span>
+  <span class="tn-ticker-label"> அறிவிப்பு</span>
   <span class="tn-ticker-content">
     தமிழ் சொற்களை கிளிக் செய்து பொருள் காணுங்கள் &nbsp;·&nbsp;
     PDF, DOCX, TXT கோப்புகளை பதிவேற்றவும் &nbsp;·&nbsp;
@@ -1105,16 +1050,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════
-# BODY — 3 COLUMNS
-# ══════════════════════════════════════════════════════════════════════
 col_l, col_c, col_r = st.columns([2, 5, 3], gap="small")
 
-# ─────────────────────────────────────────────────────────────────────
-# LEFT SIDEBAR
-# ─────────────────────────────────────────────────────────────────────
 with col_l:
-    st.markdown('<div class="gov-sidebar-head">🔤 உயிர் எழுத்துக்கள்</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gov-sidebar-head"> உயிர் எழுத்துக்கள்</div>', unsafe_allow_html=True)
     st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
     vcols = st.columns(6)
     for i, letter in enumerate(TAMIL_VOWELS):
@@ -1126,7 +1065,7 @@ with col_l:
                     st.session_state.history.insert(0, letter)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="gov-sidebar-head">🔤 மெய் எழுத்துக்கள்</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gov-sidebar-head">மெய் எழுத்துக்கள்</div>', unsafe_allow_html=True)
     st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
     ccols = st.columns(6)
     for i, letter in enumerate(TAMIL_CONSONANTS[:18]):
@@ -1142,7 +1081,7 @@ with col_l:
     in_dict  = sum(1 for w in tw_uniq if tier2_json(w))
 
     st.markdown(f"""
-    <div class="gov-sidebar-head">📊 ஆவண புள்ளிவிவரம்</div>
+    <div class="gov-sidebar-head"> ஆவண புள்ளிவிவரம்</div>
     <div class="gov-sidebar-body">
       <div class="gov-stat-row">
         <span class="gov-stat-label">தமிழ் சொற்கள்</span>
@@ -1173,7 +1112,7 @@ with col_l:
     if st.session_state.summary_generated and st.session_state.summary_metrics:
         m = st.session_state.summary_metrics
         st.markdown(f"""
-        <div class="gov-sidebar-head">📝 சுருக்க புள்ளிவிவரம்</div>
+        <div class="gov-sidebar-head"> சுருக்க புள்ளிவிவரம்</div>
         <div class="gov-sidebar-body">
           <div class="gov-stat-row">
             <span class="gov-stat-label">ஒட்டுமொத்த மதிப்பெண்</span>
@@ -1199,29 +1138,29 @@ with col_l:
         """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="gov-sidebar-head">ℹ️ பயன்பாட்டு முறை</div>
+    <div class="gov-sidebar-head"> பயன்பாட்டு முறை</div>
     <div class="gov-sidebar-body">
       <div class="gov-infobox">
-        📄 PDF / DOCX / TXT பதிவேற்றவும்<br>
-        🖱️ தமிழ் சொல்லை கிளிக் செய்யவும்<br>
-        📝 சுருக்கம் தாவலில் சுருக்கம் காணுங்கள்<br>
-        📊 ROUGE மதிப்பீடு தானாக காட்டும்<br>
-        📋 உரையையும் ஒட்டலாம்
+        PDF / DOCX / TXT பதிவேற்றவும்<br>
+        தமிழ் சொல்லை கிளிக் செய்யவும்<br>
+        சுருக்கம் தாவலில் சுருக்கம் காணுங்கள்<br>
+        ROUGE மதிப்பீடு தானாக காட்டும்<br>
+        உரையையும் ஒட்டலாம்
       </div>
       <div class="gov-warnbox">
-        ⚠️ அரசு ஆவணங்களை பாதுகாப்பாக பதிவேற்றவும். இந்த சேவை இலவசம்.
+         அரசு ஆவணங்களை பாதுகாப்பாக பதிவேற்றவும். இந்த சேவை இலவசம்.
       </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="gov-sidebar-head">🏛️ தமிழ்நாடு சின்னங்கள்</div>
+    <div class="gov-sidebar-head">தமிழ்நாடு சின்னங்கள்</div>
     <div class="gov-sidebar-body">
-      <div class="gov-stat-row"><span class="gov-stat-label">🌺 மலர்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">கொன்றை</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label">🐦 பறவை</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">மரங்கொத்தி</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label">🌳 மரம்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">பனை மரம்</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label">🦌 விலங்கு</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">நீலகிரி தார்</span></div>
-      <div class="gov-stat-row"><span class="gov-stat-label">🐟 மீன்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">இந்திய கணவாய்</span></div>
+      <div class="gov-stat-row"><span class="gov-stat-label"> மலர்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">கொன்றை</span></div>
+      <div class="gov-stat-row"><span class="gov-stat-label"> பறவை</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">மரங்கொத்தி</span></div>
+      <div class="gov-stat-row"><span class="gov-stat-label"> மரம்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">பனை மரம்</span></div>
+      <div class="gov-stat-row"><span class="gov-stat-label"> விலங்கு</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">நீலகிரி தார்</span></div>
+      <div class="gov-stat-row"><span class="gov-stat-label"> மீன்</span><span class="gov-stat-val" style="font-family:'Noto Sans Tamil',sans-serif">இந்திய கணவாய்</span></div>
       <div style="text-align:center;margin-top:.7rem;padding:.5rem;background:#e8f0fa;border-radius:2px">
         <div style="font-family:'Noto Serif Tamil',serif;font-size:1.15rem;color:#003366;font-weight:700">செந்தமிழ் வாழ்க!</div>
         <div style="font-size:.68rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;margin-top:.15rem">தமிழ் மொழி எப்போதும் வாழட்டும்</div>
@@ -1229,14 +1168,11 @@ with col_l:
     </div>
     """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────
-# CENTER — READER + SUMMARIZER
-# ─────────────────────────────────────────────────────────────────────
 with col_c:
     tab_upload, tab_paste, tab_summary = st.tabs([
-        "📤 ஆவணம் பதிவேற்று | Upload",
-        "📋 உரை ஒட்டு | Paste",
-        "📝 தமிழ் சுருக்கம் | Summarize",
+        " ஆவணம் பதிவேற்று | Upload",
+        " உரை ஒட்டு | Paste",
+        " தமிழ் சுருக்கம் | Summarize",
     ])
 
     with tab_upload:
@@ -1274,7 +1210,7 @@ with col_c:
             </div>
             <div class="gov-doc-card">
               <div class="gov-doc-titlebar">
-                <span class="gov-doc-filename">📄 {uploaded.name}</span>
+                <span class="gov-doc-filename">{uploaded.name}</span>
                 <span class="gov-doc-meta">
                   {len(blocks)} பகுதிகள் · {len(tw_u)} தமிழ் சொற்கள் ·
                   <span style="color:#1a6b2e">●</span> தயார்
@@ -1285,14 +1221,14 @@ with col_c:
               </div>
             </div>
             <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-              💡 அடிக்கோடிட்ட தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் காணுங்கள்
+               அடிக்கோடிட்ட தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் காணுங்கள்
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div style="text-align:center;padding:3rem 2rem;background:white;
                         border:1px dashed #c5cdd8;border-top:3px solid #003366;margin-top:.5rem">
-              <div style="font-size:2.8rem;margin-bottom:.8rem">📄</div>
+              <div style="font-size:2.8rem;margin-bottom:.8rem"></div>
               <div style="font-family:'Noto Serif Tamil',serif;font-size:1.2rem;color:#003366;font-weight:700;margin-bottom:.4rem">
                 தமிழ் ஆவணத்தை பதிவேற்றுங்கள்
               </div>
@@ -1317,7 +1253,7 @@ with col_c:
             placeholder="தமிழ் உரையை இங்கே ஒட்டவும் அல்லது தட்டச்சு செய்யவும்...\nPaste or type Tamil text here...",
             key="paste_input", label_visibility="collapsed",
         )
-        if st.button("🔍 உரையை படி | Read Text", key="paste_btn"):
+        if st.button(" உரையை படி | Read Text", key="paste_btn"):
             if pasted.strip():
                 blocks = [{"type":"para","text":l.strip()} for l in pasted.strip().splitlines() if l.strip()]
                 st.session_state.paste_blocks     = blocks
@@ -1342,7 +1278,7 @@ with col_c:
             </div>
             <div class="gov-doc-card">
               <div class="gov-doc-titlebar">
-                <span class="gov-doc-filename">📋 ஒட்டிய உரை | Pasted Text</span>
+                <span class="gov-doc-filename"> ஒட்டிய உரை | Pasted Text</span>
                 <span class="gov-doc-meta">{len(ptw)} தமிழ் சொற்கள்</span>
               </div>
               <div class="gov-doc-body">
@@ -1350,16 +1286,13 @@ with col_c:
               </div>
             </div>
             <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-              💡 தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் உருவாக்குங்கள்
+               தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் உருவாக்குங்கள்
             </div>
             """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── SUMMARY TAB ──────────────────────────────────────────────────
     with tab_summary:
         st.markdown('<div style="margin-top:.5rem">', unsafe_allow_html=True)
-
-        # Pull text from loaded document — preserve newlines for sentence splitting
         source_text = "\n".join(b["text"] for b in st.session_state.blocks)
         tamil_words_in_doc = [clean_word(w) for w in source_text.split() if is_tamil_word(w)]
 
@@ -1385,10 +1318,10 @@ with col_c:
                     "சுருக்க முறை | Method",
                     options=["hybrid", "tfidf", "position", "abstractive_ai"],
                     format_func=lambda x: {
-                        "hybrid":        "🔀 Hybrid (TF-IDF + Position)",
-                        "tfidf":         "📊 TF-IDF மட்டும்",
-                        "position":      "📍 நிலை அடிப்படையில்",
-                        "abstractive_ai":"🤖 AI சுருக்கம் (Claude)",
+                        "hybrid":        " Hybrid (TF-IDF + Position)",
+                        "tfidf":         " TF-IDF மட்டும்",
+                        "position":      " நிலை அடிப்படையில்",
+                        "abstractive_ai":" AI சுருக்கம் (Claude)",
                     }[x],
                     key="summ_method_sel",
                     label_visibility="visible",
@@ -1431,9 +1364,9 @@ with col_c:
                         ratio = summ_ratio / 100.0
                         summ_out, sel_idx, _ = extractive_summarize(source_text, ratio=ratio, method=summ_method)
                         method_labels = {
-                            "hybrid":   "🔀 Hybrid Extractive",
-                            "tfidf":    "📊 TF-IDF Extractive",
-                            "position": "📍 Position-based Extractive",
+                            "hybrid":   "Hybrid Extractive",
+                            "tfidf":    "TF-IDF Extractive",
+                            "position": "Position-based Extractive",
                         }
                         st.session_state.summary_text    = summ_out
                         st.session_state.summary_method  = method_labels.get(summ_method, summ_method)
@@ -1463,7 +1396,7 @@ with col_c:
 
                 <div class="sum-card">
                   <div class="sum-titlebar">
-                    <span>📝 தமிழ் சுருக்கம் | Tamil Summary</span>
+                    <span>தமிழ் சுருக்கம் | Tamil Summary</span>
                     <span style="font-size:.68rem;color:#b8ddc4">{st.session_state.summary_method}</span>
                   </div>
                   <div class="sum-body">
@@ -1483,11 +1416,11 @@ with col_c:
                 # Compare multiple methods button
                 if summ_method != "abstractive_ai":
                     st.markdown('<div style="margin-top:.6rem">', unsafe_allow_html=True)
-                    if st.button("📊 அனைத்து முறைகளையும் ஒப்பிடு | Compare All Extractive Methods",
+                    if st.button("அனைத்து முறைகளையும் ஒப்பிடு | Compare All Extractive Methods",
                                  key="compare_btn"):
                         with st.spinner("ஒப்பீடு செய்கிறது…"):
                             ratio_c = summ_ratio / 100.0
-                            methods = [("hybrid","🔀 Hybrid"),("tfidf","📊 TF-IDF"),("position","📍 Position")]
+                            methods = [("hybrid","Hybrid"),("tfidf","TF-IDF"),("position","Position")]
                             compare_rows = ""
                             for m_key, m_lbl in methods:
                                 s_out, _, _ = extractive_summarize(source_text, ratio=ratio_c, method=m_key)
@@ -1512,7 +1445,7 @@ with col_c:
                                 </tr>"""
                             st.markdown(f"""
                             <div class="metrics-panel" style="margin-top:.5rem">
-                              <div class="metrics-head">📊 முறை ஒப்பீடு | Method Comparison</div>
+                              <div class="metrics-head">முறை ஒப்பீடு | Method Comparison</div>
                               <div style="overflow-x:auto">
                               <table style="width:100%;border-collapse:collapse;font-size:.75rem">
                                 <thead>
@@ -1538,7 +1471,7 @@ with col_c:
                 st.markdown("""
                 <div style="text-align:center;padding:2rem 1rem;background:white;
                             border:1px solid #c5cdd8;border-top:3px solid #1a6b2e;margin-top:.7rem">
-                  <div style="font-size:2rem;margin-bottom:.6rem">📝</div>
+                  <div style="font-size:2rem;margin-bottom:.6rem"></div>
                   <div style="font-family:'Noto Serif Tamil',serif;font-size:1rem;color:#003366;font-weight:700;margin-bottom:.3rem">
                     சுருக்க முறையை தேர்வு செய்யுங்கள்
                   </div>
@@ -1551,11 +1484,8 @@ with col_c:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────
-# RIGHT — MEANING PANEL
-# ─────────────────────────────────────────────────────────────────────
 with col_r:
-    st.markdown('<div class="gov-meaning-head">📖 சொல் பொருள் | Word Meaning</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gov-meaning-head"> சொல் பொருள் | Word Meaning</div>', unsafe_allow_html=True)
 
     st.markdown('<div style="padding:.6rem .5rem .3rem"><div class="gov-search-label">🔍 சொல் தேடல் | Search Word</div></div>', unsafe_allow_html=True)
     manual = st.text_input(
@@ -1580,7 +1510,7 @@ with col_r:
     else:
         st.markdown("""
         <div class="panel-idle">
-          <div class="panel-idle-icon">🔍</div>
+          <div class="panel-idle-icon"></div>
           <div class="panel-idle-text">
             ஆவணத்திலுள்ள எந்த தமிழ் சொல்லையும் கிளிக் செய்யுங்கள்.<br><br>
             Click any Tamil word in the document to see its meaning here.<br><br>
@@ -1604,7 +1534,7 @@ with col_r:
             with st.spinner(""): st.session_state.meaning = lookup(pick)
             st.rerun()
 
-    st.markdown('<div style="margin-top:.6rem"><div class="gov-search-label">📚 அகராதி | Dictionary Browse</div></div>', unsafe_allow_html=True)
+    st.markdown('<div style="margin-top:.6rem"><div class="gov-search-label">அகராதி | Dictionary Browse</div></div>', unsafe_allow_html=True)
     if TDICT:
         letters = sorted({w[0] for w in TDICT if w})
         pick_l  = st.selectbox("எழுத்தால் தேடு", ["எல்லாம்"] + letters,
@@ -1614,14 +1544,10 @@ with col_r:
         for wk, wd in list(filtered.items())[:6]:
             en = wd.get("english","")[:35]
             with st.expander(f"{wk} — {en}"):
-                st.markdown(meaning_card_html(wk,{**wd,"tier":2,"label":"📖 உள்ளக அகராதி"}),
+                st.markdown(meaning_card_html(wk,{**wd,"tier":2,"label":" உள்ளக அகராதி"}),
                             unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════
-# FOOTER
-# ══════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="gov-footer">
   <div>
