@@ -1,11 +1,13 @@
 """
 Tamil Nadu Government — Tamil Reading & Language Assistant
 Official Style: TN Govt Portal aesthetic with Tamil Nadu state symbols
+Enhanced: Tamil Summarization + Evaluation Metrics
 """
 
 import streamlit as st
-import json, re, io
+import json, re, io, math
 from pathlib import Path
+from collections import Counter
 
 st.set_page_config(
     page_title="தமிழ்நாடு அரசு | Tamil Language Assistant",
@@ -285,6 +287,103 @@ st.markdown("""
 }
 .gov-upload-title::before { content:''; display:inline-block; width:3px; height:13px; background:var(--tn-saffron); border-radius:1px; }
 
+/* ══ SUMMARY STYLES ══ */
+.sum-card {
+  background: var(--tn-white); border: 1px solid var(--tn-border);
+  border-top: 3px solid var(--tn-green);
+  margin-bottom: .8rem;
+}
+.sum-titlebar {
+  background: var(--tn-green); color: white;
+  padding: .5rem 1rem; font-family:'Noto Sans Tamil',sans-serif;
+  font-size: .76rem; font-weight: 600; letter-spacing:.04em;
+  display: flex; align-items:center; justify-content:space-between;
+}
+.sum-body {
+  padding: 1rem 1.4rem;
+  font-family:'Noto Sans Tamil',sans-serif; font-size:1rem;
+  line-height: 2.1; color: var(--tn-text);
+}
+.sum-method-badge {
+  display:inline-flex; align-items:center; gap:.3rem;
+  font-size:.65rem; padding:.15rem .55rem; border-radius:2px;
+  font-family:'Noto Sans Tamil',sans-serif; font-weight:500;
+  background:#e8f5ee; color:#155724; border:1px solid #b8ddc4;
+  margin-bottom:.6rem;
+}
+
+/* ══ METRICS STYLES ══ */
+.metrics-panel {
+  background: var(--tn-white); border: 1px solid var(--tn-border);
+  border-top: 3px solid var(--tn-navy); margin-top: .6rem;
+}
+.metrics-head {
+  background: var(--tn-navy2); color: white;
+  padding: .5rem .9rem; font-family:'Noto Sans Tamil',sans-serif;
+  font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em;
+  display:flex; align-items:center; gap:.4rem;
+}
+.metrics-body { padding: .7rem .8rem; }
+.metric-row {
+  display: flex; align-items: center; gap:.6rem;
+  margin-bottom: .6rem; padding-bottom:.6rem;
+  border-bottom: 1px dashed var(--tn-gray1);
+}
+.metric-row:last-child { border-bottom: none; margin-bottom:0; padding-bottom:0; }
+.metric-label {
+  font-size:.7rem; color:var(--tn-text2); font-family:'Noto Sans Tamil',sans-serif;
+  width: 130px; flex-shrink:0; line-height:1.3;
+}
+.metric-label small { display:block; color:var(--tn-gray3); font-size:.62rem; font-style:italic; }
+.metric-bar-wrap { flex:1; height:10px; background:var(--tn-gray1); border-radius:1px; overflow:hidden; }
+.metric-bar { height:100%; border-radius:1px; transition:width .6s ease; }
+.bar-green  { background: #1a6b2e; }
+.bar-blue   { background: #1a5276; }
+.bar-saffron{ background: #e07b00; }
+.bar-navy   { background: #003366; }
+.bar-red    { background: #8b1a1a; }
+.metric-val {
+  font-size:.75rem; font-weight:600; color:var(--tn-navy);
+  font-family:'Noto Sans Tamil',sans-serif; width:42px; text-align:right;
+}
+.metric-grade {
+  font-size:.65rem; padding:.1rem .38rem; border-radius:2px; font-weight:600;
+  font-family:'Noto Sans Tamil',sans-serif;
+}
+.grade-A { background:#d4edda; color:#155724; border:1px solid #b8ddc4; }
+.grade-B { background:#d1ecf1; color:#0c5460; border:1px solid #bee5eb; }
+.grade-C { background:#fff3cd; color:#856404; border:1px solid #ffc107; }
+.grade-D { background:#f8d7da; color:#721c24; border:1px solid #f5c2c7; }
+.metrics-summary-box {
+  background: var(--tn-offwhite); border: 1px solid var(--tn-gray1);
+  border-left: 4px solid var(--tn-saffron);
+  padding: .55rem .8rem; margin-top: .5rem;
+  font-size: .74rem; color: var(--tn-text2);
+  font-family:'Noto Sans Tamil',sans-serif; line-height:1.6;
+}
+.overall-score-box {
+  background: var(--tn-navy); color:white; padding:.6rem .9rem;
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:.6rem;
+}
+.overall-score-num {
+  font-size:2rem; font-weight:700;
+  font-family:'Noto Serif Tamil',serif;
+}
+.overall-score-label { font-size:.68rem; color:#aabbd4; font-family:'Noto Sans Tamil',sans-serif; margin-top:.1rem; }
+.overall-score-grade { font-size:1.1rem; font-weight:700; padding:.3rem .7rem; border-radius:2px; }
+.keywords-box {
+  background:var(--tn-offwhite); border:1px solid var(--tn-gray1);
+  padding:.5rem .7rem; margin-top:.4rem;
+}
+.kw-label { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--tn-gray3); font-family:'Noto Sans Tamil',sans-serif; margin-bottom:.35rem; }
+.kw-chip {
+  display:inline-block; font-family:'Noto Sans Tamil',sans-serif; font-size:.72rem;
+  padding:.1rem .4rem; margin:2px; border-radius:1px;
+  background:#e8f0fa; border:1px solid #b8cce8; color:var(--tn-navy);
+}
+.kw-chip.in-summary { background:#d4edda; border-color:#b8ddc4; color:#155724; }
+
 /* ══ STREAMLIT OVERRIDES ══ */
 .stTextInput>div>div>input, .stTextArea>div>div>textarea {
   font-family:'Noto Sans Tamil',sans-serif !important; font-size:.98rem !important;
@@ -539,10 +638,363 @@ def meaning_card_html(word, r):
     </div>"""
 
 # ══════════════════════════════════════════════════════════════════════
+# SUMMARIZATION ENGINE
+# ══════════════════════════════════════════════════════════════════════
+
+def get_tamil_sentences(text):
+    """Split Tamil text into sentences on Tamil/common punctuation."""
+    sents = re.split(r'[।॥\.\!\?\n]+', text)
+    sents = [s.strip() for s in sents if len(s.strip()) > 8]
+    return sents
+
+def score_sentence_tfidf(sentences):
+    """Score sentences using TF-IDF-like approach for Tamil."""
+    all_words = []
+    sent_words = []
+    for s in sentences:
+        words = [clean_word(w) for w in s.split() if is_tamil_word(w)]
+        sent_words.append(words)
+        all_words.extend(words)
+
+    total_docs = len(sentences)
+    word_doc_freq = Counter()
+    for sw in sent_words:
+        for w in set(sw):
+            word_doc_freq[w] += 1
+
+    total_word_freq = Counter(all_words)
+
+    scores = []
+    for i, sw in enumerate(sent_words):
+        if not sw:
+            scores.append(0.0)
+            continue
+        score = 0.0
+        for w in sw:
+            tf  = sw.count(w) / len(sw)
+            idf = math.log((total_docs + 1) / (word_doc_freq[w] + 1)) + 1
+            score += tf * idf
+        scores.append(score / len(sw))
+    return scores
+
+def score_sentence_position(sentences):
+    """Positional bias: first and last sentences score higher."""
+    n = len(sentences)
+    scores = []
+    for i in range(n):
+        if i == 0 or i == n - 1:
+            scores.append(1.0)
+        elif i < n * 0.25:
+            scores.append(0.7)
+        elif i > n * 0.75:
+            scores.append(0.5)
+        else:
+            scores.append(0.3)
+    return scores
+
+def score_sentence_length(sentences):
+    """Prefer medium-length sentences, penalise very short/long."""
+    scores = []
+    for s in sentences:
+        wc = len(s.split())
+        if 8 <= wc <= 25:
+            scores.append(1.0)
+        elif 5 <= wc < 8:
+            scores.append(0.6)
+        elif wc > 25:
+            scores.append(0.7)
+        else:
+            scores.append(0.3)
+    return scores
+
+def extractive_summarize(text, ratio=0.3, method="hybrid"):
+    """
+    Extractive summarization with three methods:
+      - tfidf    : term-frequency / inverse-document-frequency
+      - position : lead-bias positional scoring
+      - hybrid   : weighted blend of all signals
+    Returns (summary_text, selected_indices, all_scores_dict).
+    """
+    sentences = get_tamil_sentences(text)
+    if len(sentences) <= 2:
+        return text, list(range(len(sentences))), {}
+
+    n_select = max(1, round(len(sentences) * ratio))
+
+    tfidf_scores    = score_sentence_tfidf(sentences)
+    position_scores = score_sentence_position(sentences)
+    length_scores   = score_sentence_length(sentences)
+
+    if method == "tfidf":
+        final_scores = tfidf_scores
+    elif method == "position":
+        final_scores = position_scores
+    else:  # hybrid
+        final_scores = [
+            0.5 * t + 0.3 * p + 0.2 * l
+            for t, p, l in zip(tfidf_scores, position_scores, length_scores)
+        ]
+
+    ranked = sorted(range(len(sentences)), key=lambda i: final_scores[i], reverse=True)
+    selected = sorted(ranked[:n_select])
+    summary  = " ".join(sentences[i] for i in selected)
+
+    scores_dict = {
+        "tfidf":    tfidf_scores,
+        "position": position_scores,
+        "length":   length_scores,
+        "final":    final_scores,
+    }
+    return summary, selected, scores_dict
+
+def abstractive_summarize_ai(text, length_hint="medium"):
+    """Call Anthropic API to generate a Tamil abstractive summary."""
+    import requests
+
+    length_map = {
+        "short":  "2–3 sentences",
+        "medium": "4–6 sentences",
+        "long":   "8–10 sentences",
+    }
+    length_desc = length_map.get(length_hint, "4–6 sentences")
+
+    prompt = (
+        f"நீங்கள் ஒரு தமிழ் மொழி நிபுணர். கீழே கொடுக்கப்பட்ட தமிழ் உரையை "
+        f"தெளிவான, இயற்கையான தமிழில் சுருக்கமாக எழுதுங்கள். "
+        f"சுருக்கம் {length_desc} இருக்க வேண்டும். "
+        f"முக்கிய கருத்துக்களை மட்டும் வைத்துக்கொண்டு, "
+        f"எளிய தமிழில் விளக்குங்கள்.\n\n"
+        f"உரை:\n{text[:3000]}\n\n"
+        f"சுருக்கம் (தமிழில் மட்டும்):"
+    )
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json"},
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 1000,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        data = resp.json()
+        text_out = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text_out += block["text"]
+        return text_out.strip() if text_out else None
+    except Exception as e:
+        return None
+
+# ══════════════════════════════════════════════════════════════════════
+# EVALUATION METRICS
+# ══════════════════════════════════════════════════════════════════════
+
+def get_ngrams(tokens, n):
+    return Counter(tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1))
+
+def rouge_n(reference_tokens, summary_tokens, n=1):
+    ref_ng = get_ngrams(reference_tokens, n)
+    sum_ng = get_ngrams(summary_tokens, n)
+    if not ref_ng or not sum_ng:
+        return 0.0
+    overlap = sum(min(ref_ng[k], sum_ng[k]) for k in sum_ng)
+    recall  = overlap / sum(ref_ng.values())
+    precision = overlap / sum(sum_ng.values())
+    if precision + recall == 0:
+        return 0.0
+    f1 = 2 * precision * recall / (precision + recall)
+    return round(f1 * 100, 1)
+
+def lcs_length(a, b):
+    m, n = len(a), len(b)
+    dp = [[0]*(n+1) for _ in range(2)]
+    for i in range(1, m+1):
+        for j in range(1, n+1):
+            if a[i-1] == b[j-1]:
+                dp[i%2][j] = dp[(i-1)%2][j-1] + 1
+            else:
+                dp[i%2][j] = max(dp[(i-1)%2][j], dp[i%2][j-1])
+    return dp[m%2][n]
+
+def rouge_l(reference_tokens, summary_tokens):
+    if not reference_tokens or not summary_tokens:
+        return 0.0
+    lcs = lcs_length(reference_tokens, summary_tokens)
+    recall    = lcs / len(reference_tokens)
+    precision = lcs / len(summary_tokens)
+    if precision + recall == 0:
+        return 0.0
+    f1 = 2 * precision * recall / (precision + recall)
+    return round(f1 * 100, 1)
+
+def compression_ratio(original_text, summary_text):
+    orig_wc = len(original_text.split())
+    sum_wc  = len(summary_text.split())
+    if orig_wc == 0:
+        return 0.0
+    ratio = (1 - sum_wc / orig_wc) * 100
+    return round(max(0.0, min(100.0, ratio)), 1)
+
+def keyword_coverage(original_text, summary_text, top_n=15):
+    orig_words = [clean_word(w) for w in original_text.split() if is_tamil_word(w)]
+    sum_words  = set(clean_word(w) for w in summary_text.split() if is_tamil_word(w))
+    if not orig_words:
+        return 0.0, [], []
+    freq = Counter(orig_words)
+    top_kws = [w for w, _ in freq.most_common(top_n) if len(w) > 2]
+    covered = [w for w in top_kws if w in sum_words]
+    score   = round(len(covered) / len(top_kws) * 100, 1) if top_kws else 0.0
+    return score, top_kws, covered
+
+def lexical_diversity(text):
+    words = [clean_word(w) for w in text.split() if is_tamil_word(w)]
+    if len(words) < 3:
+        return 0.0
+    return round(len(set(words)) / len(words) * 100, 1)
+
+def avg_sentence_length(text):
+    sents = get_tamil_sentences(text)
+    if not sents:
+        return 0
+    total = sum(len(s.split()) for s in sents)
+    return round(total / len(sents), 1)
+
+def grade_score(score):
+    if score >= 75: return "A", "grade-A"
+    if score >= 55: return "B", "grade-B"
+    if score >= 35: return "C", "grade-C"
+    return "D", "grade-D"
+
+def evaluate_summary(original_text, summary_text, method_label=""):
+    orig_toks = [clean_word(w) for w in original_text.split() if is_tamil_word(w)]
+    sum_toks  = [clean_word(w) for w in summary_text.split() if is_tamil_word(w)]
+
+    r1  = rouge_n(orig_toks, sum_toks, 1)
+    r2  = rouge_n(orig_toks, sum_toks, 2)
+    rl  = rouge_l(orig_toks, sum_toks)
+    cr  = compression_ratio(original_text, summary_text)
+    kc, top_kws, covered_kws = keyword_coverage(original_text, summary_text)
+    ld_orig = lexical_diversity(original_text)
+    ld_sum  = lexical_diversity(summary_text)
+    asl_sum = avg_sentence_length(summary_text)
+    n_sents_orig = len(get_tamil_sentences(original_text))
+    n_sents_sum  = len(get_tamil_sentences(summary_text))
+
+    overall = round((r1 * 0.3 + r2 * 0.2 + rl * 0.2 + kc * 0.3), 1)
+
+    return {
+        "rouge_1": r1,
+        "rouge_2": r2,
+        "rouge_l": rl,
+        "compression_ratio": cr,
+        "keyword_coverage": kc,
+        "lexical_diversity_orig": ld_orig,
+        "lexical_diversity_sum":  ld_sum,
+        "avg_sent_len": asl_sum,
+        "n_sents_orig": n_sents_orig,
+        "n_sents_sum":  n_sents_sum,
+        "top_keywords": top_kws,
+        "covered_keywords": covered_kws,
+        "overall": overall,
+        "method": method_label,
+    }
+
+def render_metrics_panel(metrics):
+    if not metrics:
+        return ""
+
+    r1,  r2,  rl  = metrics["rouge_1"], metrics["rouge_2"], metrics["rouge_l"]
+    cr   = metrics["compression_ratio"]
+    kc   = metrics["keyword_coverage"]
+    ld_s = metrics["lexical_diversity_sum"]
+    overall = metrics["overall"]
+    g_lbl, g_cls = grade_score(overall)
+
+    def row(label, sublabel, val, max_val, bar_cls):
+        pct = min(100, round(val / max_val * 100)) if max_val else 0
+        gl, gc = grade_score(val)
+        return f"""
+        <div class="metric-row">
+          <div class="metric-label">{label}<small>{sublabel}</small></div>
+          <div class="metric-bar-wrap"><div class="metric-bar {bar_cls}" style="width:{pct}%"></div></div>
+          <div class="metric-val">{val:.1f}%</div>
+          <span class="metric-grade {gc}">{gl}</span>
+        </div>"""
+
+    rows = (
+        row("ROUGE-1", "Unigram overlap", r1, 100, "bar-green") +
+        row("ROUGE-2", "Bigram overlap", r2, 100, "bar-blue") +
+        row("ROUGE-L", "Longest common subsequence", rl, 100, "bar-navy") +
+        row("Keyword Coverage", "முக்கிய சொல் உள்ளடக்கம்", kc, 100, "bar-saffron") +
+        row("Lexical Diversity", "சொல் வகை / தனித்தன்மை", ld_s, 100, "bar-red")
+    )
+
+    top_kws    = metrics.get("top_keywords", [])
+    covered    = set(metrics.get("covered_keywords", []))
+    kw_chips   = " ".join(
+        f'<span class="kw-chip{"  in-summary" if w in covered else ""}">{w}</span>'
+        for w in top_kws[:15]
+    )
+
+    cr_color = "#1a6b2e" if cr >= 50 else ("#e07b00" if cr >= 25 else "#8b1a1a")
+
+    summary_note = (
+        f"சுருக்கம் {metrics['n_sents_sum']} வாக்கியங்களில் "
+        f"{metrics['n_sents_orig']} வாக்கியங்களை {cr:.0f}% குறைத்தது. "
+        f"சராசரி வாக்கிய நீளம் {metrics['avg_sent_len']:.0f} சொற்கள். "
+        f"முக்கிய சொற்களில் {len(covered)}/{len(top_kws)} உள்ளடக்கப்பட்டுள்ளன."
+    )
+
+    return f"""
+    <div class="metrics-panel">
+      <div class="metrics-head">📊 சுருக்க மதிப்பீடு | Summary Evaluation</div>
+      <div class="metrics-body">
+        <div class="overall-score-box">
+          <div>
+            <div class="overall-score-num">{overall:.0f}</div>
+            <div class="overall-score-label">ஒட்டுமொத்த மதிப்பெண் | Overall Score (0–100)</div>
+          </div>
+          <div>
+            <span class="overall-score-grade {'grade-A' if overall>=75 else 'grade-B' if overall>=55 else 'grade-C' if overall>=35 else 'grade-D'}"
+                  style="background:{'#d4edda' if overall>=75 else '#d1ecf1' if overall>=55 else '#fff3cd' if overall>=35 else '#f8d7da'};
+                         color:{'#155724' if overall>=75 else '#0c5460' if overall>=55 else '#856404' if overall>=35 else '#721c24'}">
+              {g_lbl}
+            </span>
+            <div style="font-size:.65rem;color:#aabbd4;margin-top:.3rem;font-family:'Noto Sans Tamil',sans-serif">
+              {metrics.get('method','')}
+            </div>
+          </div>
+        </div>
+
+        {rows}
+
+        <div style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.7rem;font-family:'Noto Sans Tamil',sans-serif;color:var(--tn-text2);">
+          <span>அமுக்க விகிதம் | Compression</span>
+          <span style="font-size:1.1rem;font-weight:700;color:{cr_color}">{cr:.1f}%</span>
+          <span style="color:var(--tn-gray3)">({metrics['n_sents_orig']} → {metrics['n_sents_sum']} வாக்கியங்கள்)</span>
+        </div>
+
+        <div class="keywords-box">
+          <div class="kw-label">🔑 முக்கிய சொற்கள் (பச்சை = சுருக்கத்தில் உள்ளன)</div>
+          {kw_chips if kw_chips else '<span style="font-size:.72rem;color:var(--tn-gray3);font-family:\'Noto Sans Tamil\',sans-serif">தமிழ் உரை இல்லை</span>'}
+        </div>
+
+        <div class="metrics-summary-box">
+          📝 {summary_note}
+        </div>
+      </div>
+    </div>"""
+
+# ══════════════════════════════════════════════════════════════════════
 # SESSION STATE
 # ══════════════════════════════════════════════════════════════════════
 for k,v in [("blocks",[]),("sel_word",""),("meaning",None),
-            ("history",[]),("fname",""),("paste_blocks",[])]:
+            ("history",[]),("fname",""),("paste_blocks",[]),
+            ("summary_text",""),("summary_metrics",None),
+            ("summary_method",""),("summary_generated",False)]:
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -582,8 +1034,8 @@ st.markdown("""
     <div>
       <div class="gov-app-title">தமிழ் மொழி உதவியாளர் — Tamil Language Assistant</div>
       <div class="gov-app-sub">
-        ஆவண வாசிப்பு · சொல் பொருள் தேடல் · 4-நிலை அமைப்பு |
-        Document Reader · Word Meaning · 4-Tier Engine
+        ஆவண வாசிப்பு · சொல் பொருள் தேடல் · தமிழ் சுருக்கம் · 4-நிலை அமைப்பு |
+        Document Reader · Word Meaning · Tamil Summarization · 4-Tier Engine
       </div>
     </div>
   </div>
@@ -597,6 +1049,7 @@ st.markdown("""
   <a class="gov-nav-item active">🏠 முகப்பு</a><span class="gov-nav-sep">|</span>
   <a class="gov-nav-item">📄 ஆவண வாசிப்பு</a><span class="gov-nav-sep">|</span>
   <a class="gov-nav-item">🔍 சொல் தேடல்</a><span class="gov-nav-sep">|</span>
+  <a class="gov-nav-item">📝 சுருக்கம்</a><span class="gov-nav-sep">|</span>
   <a class="gov-nav-item">📚 அகராதி</a><span class="gov-nav-sep">|</span>
   <a class="gov-nav-item">📊 புள்ளிவிவரம்</a><span class="gov-nav-sep">|</span>
   <a class="gov-nav-item">ℹ️ உதவி</a>
@@ -611,14 +1064,12 @@ st.markdown("""
   <span class="tn-ticker-content">
     தமிழ் சொற்களை கிளிக் செய்து பொருள் காணுங்கள் &nbsp;·&nbsp;
     PDF, DOCX, TXT கோப்புகளை பதிவேற்றவும் &nbsp;·&nbsp;
+    புதுமை: தமிழ் சுருக்கம் + மதிப்பீட்டு அமைப்பு இப்போது கிடைக்கிறது &nbsp;·&nbsp;
+    ROUGE மதிப்பீடு · முக்கிய சொல் உள்ளடக்கம் · அமுக்க விகிதம் &nbsp;·&nbsp;
     Click any underlined Tamil word to see meaning &nbsp;·&nbsp;
+    NEW: Tamil Summarization with Evaluation Metrics now available &nbsp;·&nbsp;
     4-நிலை பொருள் தேடல் அமைப்பு இப்போது கிடைக்கிறது &nbsp;·&nbsp;
-    உரையை ஒட்டி தமிழ் சொற்களை படிக்கலாம் &nbsp;·&nbsp;
-    தமிழ்நாடு அரசு சேவை — Government of Tamil Nadu Service &nbsp;·&nbsp;
-    தமிழ் சொற்களை கிளிக் செய்து பொருள் காணுங்கள் &nbsp;·&nbsp;
-    PDF, DOCX, TXT கோப்புகளை பதிவேற்றவும் &nbsp;·&nbsp;
-    Click any underlined Tamil word to see meaning &nbsp;·&nbsp;
-    4-நிலை பொருள் தேடல் அமைப்பு இப்போது கிடைக்கிறது
+    தமிழ்நாடு அரசு சேவை — Government of Tamil Nadu Service
   </span>
 </div>
 """, unsafe_allow_html=True)
@@ -632,7 +1083,6 @@ col_l, col_c, col_r = st.columns([2, 5, 3], gap="small")
 # LEFT SIDEBAR
 # ─────────────────────────────────────────────────────────────────────
 with col_l:
-    # Vowels
     st.markdown('<div class="gov-sidebar-head">🔤 உயிர் எழுத்துக்கள்</div>', unsafe_allow_html=True)
     st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
     vcols = st.columns(6)
@@ -645,7 +1095,6 @@ with col_l:
                     st.session_state.history.insert(0, letter)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Consonants
     st.markdown('<div class="gov-sidebar-head">🔤 மெய் எழுத்துக்கள்</div>', unsafe_allow_html=True)
     st.markdown('<div class="gov-sidebar-body">', unsafe_allow_html=True)
     ccols = st.columns(6)
@@ -656,7 +1105,6 @@ with col_l:
                 st.session_state.meaning  = lookup(letter)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Document stats
     all_text = " ".join(b["text"] for b in st.session_state.blocks)
     tw_all   = [clean_word(t) for t in all_text.split() if is_tamil_word(t)]
     tw_uniq  = list(dict.fromkeys(w for w in tw_all if w))
@@ -690,14 +1138,43 @@ with col_l:
     </div>
     """, unsafe_allow_html=True)
 
-    # Info
+    # Summary stats in sidebar
+    if st.session_state.summary_generated and st.session_state.summary_metrics:
+        m = st.session_state.summary_metrics
+        st.markdown(f"""
+        <div class="gov-sidebar-head">📝 சுருக்க புள்ளிவிவரம்</div>
+        <div class="gov-sidebar-body">
+          <div class="gov-stat-row">
+            <span class="gov-stat-label">ஒட்டுமொத்த மதிப்பெண்</span>
+            <span class="gov-stat-val">{m['overall']:.0f}/100</span>
+          </div>
+          <div class="gov-stat-row">
+            <span class="gov-stat-label">ROUGE-1</span>
+            <span class="gov-stat-val">{m['rouge_1']:.1f}%</span>
+          </div>
+          <div class="gov-stat-row">
+            <span class="gov-stat-label">ROUGE-2</span>
+            <span class="gov-stat-val">{m['rouge_2']:.1f}%</span>
+          </div>
+          <div class="gov-stat-row">
+            <span class="gov-stat-label">அமுக்க விகிதம்</span>
+            <span class="gov-stat-val">{m['compression_ratio']:.0f}%</span>
+          </div>
+          <div class="gov-stat-row">
+            <span class="gov-stat-label">சொல் உள்ளடக்கம்</span>
+            <span class="gov-stat-val">{m['keyword_coverage']:.0f}%</span>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown("""
     <div class="gov-sidebar-head">ℹ️ பயன்பாட்டு முறை</div>
     <div class="gov-sidebar-body">
       <div class="gov-infobox">
         📄 PDF / DOCX / TXT பதிவேற்றவும்<br>
         🖱️ தமிழ் சொல்லை கிளிக் செய்யவும்<br>
-        📖 வலதில் பொருள் தோன்றும்<br>
+        📝 சுருக்கம் தாவலில் சுருக்கம் காணுங்கள்<br>
+        📊 ROUGE மதிப்பீடு தானாக காட்டும்<br>
         📋 உரையையும் ஒட்டலாம்
       </div>
       <div class="gov-warnbox">
@@ -706,7 +1183,6 @@ with col_l:
     </div>
     """, unsafe_allow_html=True)
 
-    # TN Symbols
     st.markdown("""
     <div class="gov-sidebar-head">🏛️ தமிழ்நாடு சின்னங்கள்</div>
     <div class="gov-sidebar-body">
@@ -723,12 +1199,13 @@ with col_l:
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────
-# CENTER — READER
+# CENTER — READER + SUMMARIZER
 # ─────────────────────────────────────────────────────────────────────
 with col_c:
-    tab_upload, tab_paste = st.tabs([
-        "📤 ஆவணம் பதிவேற்று | Upload Document",
-        "📋 உரை ஒட்டு | Paste Text"
+    tab_upload, tab_paste, tab_summary = st.tabs([
+        "📤 ஆவணம் பதிவேற்று | Upload",
+        "📋 உரை ஒட்டு | Paste",
+        "📝 தமிழ் சுருக்கம் | Summarize",
     ])
 
     with tab_upload:
@@ -743,11 +1220,14 @@ with col_c:
             if uploaded.name != st.session_state.fname:
                 with st.spinner("ஆவணம் படிக்கிறது… | Reading document…"):
                     blocks = extract_document(uploaded)
-                    st.session_state.blocks       = blocks
-                    st.session_state.fname        = uploaded.name
-                    st.session_state.sel_word     = ""
-                    st.session_state.meaning      = None
-                    st.session_state.paste_blocks = []
+                    st.session_state.blocks           = blocks
+                    st.session_state.fname            = uploaded.name
+                    st.session_state.sel_word         = ""
+                    st.session_state.meaning          = None
+                    st.session_state.paste_blocks     = []
+                    st.session_state.summary_text     = ""
+                    st.session_state.summary_metrics  = None
+                    st.session_state.summary_generated= False
 
             blocks  = st.session_state.blocks
             all_txt = " ".join(b["text"] for b in blocks)
@@ -774,7 +1254,7 @@ with col_c:
               </div>
             </div>
             <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-              💡 அடிக்கோடிட்ட தமிழ் சொற்களை கிளிக் செய்யவும் · Click underlined Tamil words for meaning
+              💡 அடிக்கோடிட்ட தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் காணுங்கள்
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -809,16 +1289,19 @@ with col_c:
         if st.button("🔍 உரையை படி | Read Text", key="paste_btn"):
             if pasted.strip():
                 blocks = [{"type":"para","text":l.strip()} for l in pasted.strip().splitlines() if l.strip()]
-                st.session_state.paste_blocks = blocks
-                st.session_state.blocks       = blocks
-                st.session_state.fname        = "ஒட்டிய உரை"
-                st.session_state.sel_word     = ""
-                st.session_state.meaning      = None
+                st.session_state.paste_blocks     = blocks
+                st.session_state.blocks           = blocks
+                st.session_state.fname            = "ஒட்டிய உரை"
+                st.session_state.sel_word         = ""
+                st.session_state.meaning          = None
+                st.session_state.summary_text     = ""
+                st.session_state.summary_metrics  = None
+                st.session_state.summary_generated= False
 
         if st.session_state.paste_blocks:
-            pb    = st.session_state.paste_blocks
-            pt    = " ".join(b["text"] for b in pb)
-            ptw   = list(dict.fromkeys(clean_word(t) for t in pt.split() if is_tamil_word(t)))
+            pb  = st.session_state.paste_blocks
+            pt  = " ".join(b["text"] for b in pb)
+            ptw = list(dict.fromkeys(clean_word(t) for t in pt.split() if is_tamil_word(t)))
             st.markdown(f"""
             <div class="stats-grid">
               <div class="stat-box"><span class="stat-num">{len(pb)}</span><span class="stat-lbl">வரிகள்</span></div>
@@ -836,18 +1319,213 @@ with col_c:
               </div>
             </div>
             <div style="text-align:center;margin-top:.4rem;font-size:.72rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif">
-              💡 தமிழ் சொற்களை கிளிக் செய்யவும் · Click Tamil words for meaning
+              💡 தமிழ் சொற்களை கிளிக் செய்யவும் · "சுருக்கம்" தாவலில் சுருக்கம் உருவாக்குங்கள்
             </div>
             """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── SUMMARY TAB ──────────────────────────────────────────────────
+    with tab_summary:
+        st.markdown('<div style="margin-top:.5rem">', unsafe_allow_html=True)
+
+        # Pull text from loaded document
+        source_text = " ".join(b["text"] for b in st.session_state.blocks)
+        tamil_words_in_doc = [clean_word(w) for w in source_text.split() if is_tamil_word(w)]
+
+        if not source_text.strip():
+            st.markdown("""
+            <div style="text-align:center;padding:2.5rem 1.5rem;background:white;
+                        border:1px dashed #c5cdd8;border-top:3px solid #1a6b2e;margin-top:.5rem">
+              <div style="font-size:2.4rem;margin-bottom:.7rem">📝</div>
+              <div style="font-family:'Noto Serif Tamil',serif;font-size:1.1rem;color:#003366;font-weight:700;margin-bottom:.4rem">
+                முதலில் ஆவணம் பதிவேற்றுங்கள்
+              </div>
+              <div style="font-size:.82rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;">
+                "பதிவேற்று" அல்லது "ஒட்டு" தாவலில் உரை சேர்த்த பின் இங்கே வாருங்கள்.<br>
+                Upload or paste text first, then come here to summarize.
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Controls row
+            ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 1])
+            with ctrl1:
+                summ_method = st.selectbox(
+                    "சுருக்க முறை | Method",
+                    options=["hybrid", "tfidf", "position", "abstractive_ai"],
+                    format_func=lambda x: {
+                        "hybrid":        "🔀 Hybrid (TF-IDF + Position)",
+                        "tfidf":         "📊 TF-IDF மட்டும்",
+                        "position":      "📍 நிலை அடிப்படையில்",
+                        "abstractive_ai":"🤖 AI சுருக்கம் (Claude)",
+                    }[x],
+                    key="summ_method_sel",
+                    label_visibility="visible",
+                )
+            with ctrl2:
+                if summ_method == "abstractive_ai":
+                    summ_length = st.selectbox(
+                        "நீளம் | Length",
+                        options=["short","medium","long"],
+                        format_func=lambda x: {"short":"குறுகிய (2–3 வாக்கியம்)",
+                                               "medium":"நடுத்தர (4–6 வாக்கியம்)",
+                                               "long":"நீண்ட (8–10 வாக்கியம்)"}[x],
+                        index=1, key="summ_len_sel", label_visibility="visible",
+                    )
+                else:
+                    summ_ratio = st.slider(
+                        "சுருக்க விகிதம் | Compression ratio",
+                        min_value=10, max_value=60, value=30, step=5,
+                        format="%d%%", key="summ_ratio_sl", label_visibility="visible",
+                    )
+            with ctrl3:
+                st.markdown("<div style='margin-top:1.6rem'>", unsafe_allow_html=True)
+                run_btn = st.button("▶ சுருக்கு | Summarize", key="run_summary_btn")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            if run_btn:
+                with st.spinner("சுருக்கம் உருவாக்குகிறது… | Generating summary…"):
+                    if summ_method == "abstractive_ai":
+                        summ_out = abstractive_summarize_ai(source_text, length_hint=summ_length)
+                        if summ_out:
+                            st.session_state.summary_text    = summ_out
+                            st.session_state.summary_method  = "🤖 AI சுருக்கம் (Claude)"
+                            st.session_state.summary_metrics = evaluate_summary(
+                                source_text, summ_out, "AI Abstractive"
+                            )
+                            st.session_state.summary_generated = True
+                        else:
+                            st.error("AI சுருக்கம் தோல்வியடைந்தது. Extractive முறையை முயற்சிக்கவும்.")
+                    else:
+                        ratio = summ_ratio / 100.0
+                        summ_out, sel_idx, _ = extractive_summarize(source_text, ratio=ratio, method=summ_method)
+                        method_labels = {
+                            "hybrid":   "🔀 Hybrid Extractive",
+                            "tfidf":    "📊 TF-IDF Extractive",
+                            "position": "📍 Position-based Extractive",
+                        }
+                        st.session_state.summary_text    = summ_out
+                        st.session_state.summary_method  = method_labels.get(summ_method, summ_method)
+                        st.session_state.summary_metrics = evaluate_summary(
+                            source_text, summ_out, method_labels.get(summ_method,"")
+                        )
+                        st.session_state.summary_generated = True
+
+            # Display summary
+            if st.session_state.summary_generated and st.session_state.summary_text:
+                summ_wc   = len(st.session_state.summary_text.split())
+                orig_wc   = len(source_text.split())
+                cr_display= round((1 - summ_wc / orig_wc) * 100) if orig_wc else 0
+
+                st.markdown(f"""
+                <div class="stats-grid" style="margin-top:.7rem">
+                  <div class="stat-box"><span class="stat-num">{orig_wc:,}</span><span class="stat-lbl">மூல சொற்கள்</span></div>
+                  <div class="stat-box"><span class="stat-num">{summ_wc:,}</span><span class="stat-lbl">சுருக்க சொற்கள்</span></div>
+                  <div class="stat-box" style="border-top-color:#1a6b2e"><span class="stat-num" style="color:#1a6b2e">{cr_display}%</span><span class="stat-lbl">அமுக்கம்</span></div>
+                  <div class="stat-box" style="border-top-color:#e07b00">
+                    <span class="stat-num" style="color:#e07b00">
+                      {st.session_state.summary_metrics['overall']:.0f}
+                    </span>
+                    <span class="stat-lbl">மதிப்பெண் /100</span>
+                  </div>
+                </div>
+
+                <div class="sum-card">
+                  <div class="sum-titlebar">
+                    <span>📝 தமிழ் சுருக்கம் | Tamil Summary</span>
+                    <span style="font-size:.68rem;color:#b8ddc4">{st.session_state.summary_method}</span>
+                  </div>
+                  <div class="sum-body">
+                    <span class="sum-method-badge">✓ {st.session_state.summary_method}</span>
+                    <div style="font-family:'Noto Sans Tamil',sans-serif;font-size:1.02rem;line-height:2.1;color:var(--tn-text)">
+                      {st.session_state.summary_text}
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Metrics rendered below summary in the center column
+                if st.session_state.summary_metrics:
+                    st.markdown(render_metrics_panel(st.session_state.summary_metrics),
+                                unsafe_allow_html=True)
+
+                # Compare multiple methods button
+                if summ_method != "abstractive_ai":
+                    st.markdown('<div style="margin-top:.6rem">', unsafe_allow_html=True)
+                    if st.button("📊 அனைத்து முறைகளையும் ஒப்பிடு | Compare All Extractive Methods",
+                                 key="compare_btn"):
+                        with st.spinner("ஒப்பீடு செய்கிறது…"):
+                            ratio_c = summ_ratio / 100.0
+                            methods = [("hybrid","🔀 Hybrid"),("tfidf","📊 TF-IDF"),("position","📍 Position")]
+                            compare_rows = ""
+                            for m_key, m_lbl in methods:
+                                s_out, _, _ = extractive_summarize(source_text, ratio=ratio_c, method=m_key)
+                                ev = evaluate_summary(source_text, s_out, m_lbl)
+                                gl, gc = grade_score(ev["overall"])
+                                compare_rows += f"""
+                                <tr style="font-family:'Noto Sans Tamil',sans-serif;font-size:.75rem">
+                                  <td style="padding:.4rem .6rem;font-weight:600">{m_lbl}</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_1']:.1f}%</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_2']:.1f}%</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">{ev['rouge_l']:.1f}%</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">{ev['keyword_coverage']:.0f}%</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">{ev['compression_ratio']:.0f}%</td>
+                                  <td style="padding:.4rem .6rem;text-align:center;font-weight:700;color:var(--tn-navy)">{ev['overall']:.0f}</td>
+                                  <td style="padding:.4rem .6rem;text-align:center">
+                                    <span style="font-size:.65rem;padding:.12rem .38rem;border-radius:2px;font-weight:600;
+                                      background:{'#d4edda' if ev['overall']>=75 else '#d1ecf1' if ev['overall']>=55 else '#fff3cd' if ev['overall']>=35 else '#f8d7da'};
+                                      color:{'#155724' if ev['overall']>=75 else '#0c5460' if ev['overall']>=55 else '#856404' if ev['overall']>=35 else '#721c24'}">
+                                      {gl}
+                                    </span>
+                                  </td>
+                                </tr>"""
+                            st.markdown(f"""
+                            <div class="metrics-panel" style="margin-top:.5rem">
+                              <div class="metrics-head">📊 முறை ஒப்பீடு | Method Comparison</div>
+                              <div style="overflow-x:auto">
+                              <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+                                <thead>
+                                  <tr style="background:var(--tn-gray1);font-family:'Noto Sans Tamil',sans-serif;font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--tn-text2)">
+                                    <th style="padding:.4rem .6rem;text-align:left">முறை</th>
+                                    <th style="padding:.4rem .6rem">ROUGE-1</th>
+                                    <th style="padding:.4rem .6rem">ROUGE-2</th>
+                                    <th style="padding:.4rem .6rem">ROUGE-L</th>
+                                    <th style="padding:.4rem .6rem">KW Cov.</th>
+                                    <th style="padding:.4rem .6rem">Compress</th>
+                                    <th style="padding:.4rem .6rem">Score</th>
+                                    <th style="padding:.4rem .6rem">Grade</th>
+                                  </tr>
+                                </thead>
+                                <tbody>{compare_rows}</tbody>
+                              </table>
+                              </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+            elif not run_btn:
+                st.markdown("""
+                <div style="text-align:center;padding:2rem 1rem;background:white;
+                            border:1px solid #c5cdd8;border-top:3px solid #1a6b2e;margin-top:.7rem">
+                  <div style="font-size:2rem;margin-bottom:.6rem">📝</div>
+                  <div style="font-family:'Noto Serif Tamil',serif;font-size:1rem;color:#003366;font-weight:700;margin-bottom:.3rem">
+                    சுருக்க முறையை தேர்வு செய்யுங்கள்
+                  </div>
+                  <div style="font-size:.78rem;color:#7a8a99;font-family:'Noto Sans Tamil',sans-serif;line-height:1.7">
+                    Hybrid · TF-IDF · Position-based · AI (Claude) ஆகிய முறைகளில் தேர்ந்தெடுங்கள்.<br>
+                    சுருக்கத்திற்கு பின் ROUGE மதிப்பீடு தானாக காட்டும்.
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
 # ─────────────────────────────────────────────────────────────────────
-# RIGHT — MEANING
+# RIGHT — MEANING PANEL
 # ─────────────────────────────────────────────────────────────────────
 with col_r:
     st.markdown('<div class="gov-meaning-head">📖 சொல் பொருள் | Word Meaning</div>', unsafe_allow_html=True)
 
-    # Search
     st.markdown('<div style="padding:.6rem .5rem .3rem"><div class="gov-search-label">🔍 சொல் தேடல் | Search Word</div></div>', unsafe_allow_html=True)
     manual = st.text_input(
         "சொல்", placeholder="e.g. அன்பு, வாடகை, உரிமை…",
@@ -895,7 +1573,6 @@ with col_r:
             with st.spinner(""): st.session_state.meaning = lookup(pick)
             st.rerun()
 
-    # Dictionary browser
     st.markdown('<div style="margin-top:.6rem"><div class="gov-search-label">📚 அகராதி | Dictionary Browse</div></div>', unsafe_allow_html=True)
     if TDICT:
         letters = sorted({w[0] for w in TDICT if w})
@@ -919,7 +1596,7 @@ st.markdown("""
   <div>
     © 2026 தமிழ்நாடு அரசு | Government of Tamil Nadu · All Rights Reserved<br>
     <span style="color:#556677">
-      தமிழ் மொழி உதவியாளர் v3.0 · 4-நிலை பொருள் தேடல் அமைப்பு ·
+      தமிழ் மொழி உதவியாளர் v4.0 · 4-நிலை பொருள் தேடல் · தமிழ் சுருக்கம் · ROUGE மதிப்பீடு ·
       Developed for Tamil Language Accessibility
     </span>
   </div>
