@@ -10,3 +10,11 @@ deep-translator>=1.11.4
 transformers>=4.38.1
 torch>=2.2.1
 sentencepiece>=0.2.0
+streamlit
+pdfplumber
+pytesseract
+deep-translator
+opencv-python-headless
+pillow
+numpy
+requests
