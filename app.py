@@ -642,10 +642,25 @@ def meaning_card_html(word, r):
 # ══════════════════════════════════════════════════════════════════════
 
 def get_tamil_sentences(text):
-    """Split Tamil text into sentences on Tamil/common punctuation."""
-    sents = re.split(r'[।॥\.\!\?\n]+', text)
-    sents = [s.strip() for s in sents if len(s.strip()) > 8]
-    return sents
+    """
+    Split Tamil text into sentence units.
+    For Tamil legal docs, each line/block is a natural sentence unit.
+    Also splits within lines on Tamil + standard punctuation.
+    """
+    line_sents = [l.strip() for l in text.splitlines() if l.strip()]
+    final = []
+    for line in line_sents:
+        sub = re.split(r'[।॥\u0964\u0965\.\!\?;]+', line)
+        for s in sub:
+            s = s.strip()
+            if len(s) > 5:
+                final.append(s)
+    seen, result = set(), []
+    for s in final:
+        if s not in seen:
+            seen.add(s)
+            result.append(s)
+    return result if result else [text.strip()]
 
 def score_sentence_tfidf(sentences):
     """Score sentences using TF-IDF-like approach for Tamil."""
@@ -707,19 +722,24 @@ def score_sentence_length(sentences):
             scores.append(0.3)
     return scores
 
-def extractive_summarize(text, ratio=0.3, method="hybrid"):
+def extractive_summarize(text, ratio=0.4, method="hybrid"):
     """
     Extractive summarization with three methods:
-      - tfidf    : term-frequency / inverse-document-frequency
-      - position : lead-bias positional scoring
-      - hybrid   : weighted blend of all signals
+      - tfidf    : TF-IDF scoring
+      - position : positional lead-bias
+      - hybrid   : weighted blend
     Returns (summary_text, selected_indices, all_scores_dict).
     """
     sentences = get_tamil_sentences(text)
-    if len(sentences) <= 2:
-        return text, list(range(len(sentences))), {}
+    n = len(sentences)
 
-    n_select = max(1, round(len(sentences) * ratio))
+    if n == 0:
+        return text, [], {}
+    if n <= 3:
+        return text, list(range(n)), {}
+
+    # Adaptive: always select at least 3 sentences, never more than n-1
+    n_select = max(3, min(n - 1, round(n * ratio)))
 
     tfidf_scores    = score_sentence_tfidf(sentences)
     position_scores = score_sentence_position(sentences)
@@ -759,13 +779,15 @@ def abstractive_summarize_ai(text, length_hint="medium"):
     length_desc = length_map.get(length_hint, "4–6 sentences")
 
     prompt = (
-        f"நீங்கள் ஒரு தமிழ் மொழி நிபுணர். கீழே கொடுக்கப்பட்ட தமிழ் உரையை "
-        f"தெளிவான, இயற்கையான தமிழில் சுருக்கமாக எழுதுங்கள். "
+        f"நீங்கள் ஒரு தமிழ் மொழி நிபுணர். கீழே கொடுக்கப்பட்ட தமிழ் ஆவண உரையை "
+        f"படிக்கவும். இந்த உரையில் உள்ள அனைத்து முக்கிய கருத்துக்களையும், "
+        f"தகவல்களையும், நபர்களையும், நிபந்தனைகளையும் உள்ளடக்கிய "
+        f"விரிவான சுருக்கம் எழுதுங்கள். "
         f"சுருக்கம் {length_desc} இருக்க வேண்டும். "
-        f"முக்கிய கருத்துக்களை மட்டும் வைத்துக்கொண்டு, "
-        f"எளிய தமிழில் விளக்குங்கள்.\n\n"
-        f"உரை:\n{text[:3000]}\n\n"
-        f"சுருக்கம் (தமிழில் மட்டும்):"
+        f"சுருக்கம் மட்டும் தமிழில் எழுதுங்கள், வேறு எந்த மொழியிலும் வேண்டாம். "
+        f"முன்னுரை அல்லது 'சுருக்கம்:' என்று தொடங்க வேண்டாம், நேரடியாக எழுதுங்கள்.\n\n"
+        f"உரை:\n{text[:4000]}\n\n"
+        f"சுருக்கம்:"
     )
 
     try:
@@ -902,91 +924,100 @@ def evaluate_summary(original_text, summary_text, method_label=""):
         "method": method_label,
     }
 
+def _grade_color(score):
+    if score >= 75: return ("#d4edda","#155724","#b8ddc4","A")
+    if score >= 55: return ("#d1ecf1","#0c5460","#bee5eb","B")
+    if score >= 35: return ("#fff3cd","#856404","#ffc107","C")
+    return ("#f8d7da","#721c24","#f5c2c7","D")
+
 def render_metrics_panel(metrics):
     if not metrics:
         return ""
 
-    r1,  r2,  rl  = metrics["rouge_1"], metrics["rouge_2"], metrics["rouge_l"]
-    cr   = metrics["compression_ratio"]
-    kc   = metrics["keyword_coverage"]
+    r1  = metrics["rouge_1"]
+    r2  = metrics["rouge_2"]
+    rl  = metrics["rouge_l"]
+    cr  = metrics["compression_ratio"]
+    kc  = metrics["keyword_coverage"]
     ld_s = metrics["lexical_diversity_sum"]
     overall = metrics["overall"]
-    g_lbl, g_cls = grade_score(overall)
+    bg_o, fg_o, bd_o, lbl_o = _grade_color(overall)
 
-    def row(label, sublabel, val, max_val, bar_cls):
-        pct = min(100, round(val / max_val * 100)) if max_val else 0
-        gl, gc = grade_score(val)
-        return f"""
-        <div class="metric-row">
-          <div class="metric-label">{label}<small>{sublabel}</small></div>
-          <div class="metric-bar-wrap"><div class="metric-bar {bar_cls}" style="width:{pct}%"></div></div>
-          <div class="metric-val">{val:.1f}%</div>
-          <span class="metric-grade {gc}">{gl}</span>
-        </div>"""
+    bar_colors = {"green":"#1a6b2e","blue":"#1a5276","navy":"#003366","saffron":"#e07b00","red":"#8b1a1a"}
 
-    rows = (
-        row("ROUGE-1", "Unigram overlap", r1, 100, "bar-green") +
-        row("ROUGE-2", "Bigram overlap", r2, 100, "bar-blue") +
-        row("ROUGE-L", "Longest common subsequence", rl, 100, "bar-navy") +
-        row("Keyword Coverage", "முக்கிய சொல் உள்ளடக்கம்", kc, 100, "bar-saffron") +
-        row("Lexical Diversity", "சொல் வகை / தனித்தன்மை", ld_s, 100, "bar-red")
+    def row(label, sublabel, val, bar_color_key):
+        pct = min(100, round(val))
+        bg, fg, bd, gl = _grade_color(val)
+        bc = bar_colors.get(bar_color_key, "#003366")
+        return (
+            f'<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px dashed #e8ecf1;">' +
+            f'<div style="font-size:.7rem;color:#3a4a5a;font-family:Noto Sans Tamil,sans-serif;width:130px;flex-shrink:0;line-height:1.3;">' +
+            f'{label}<span style="display:block;color:#7a8a99;font-size:.62rem;font-style:italic">{sublabel}</span></div>' +
+            f'<div style="flex:1;height:10px;background:#e8ecf1;border-radius:1px;overflow:hidden;">' +
+            f'<div style="height:100%;width:{pct}%;background:{bc};border-radius:1px;"></div></div>' +
+            f'<div style="font-size:.75rem;font-weight:600;color:#003366;font-family:Noto Sans Tamil,sans-serif;width:42px;text-align:right;">{val:.1f}%</div>' +
+            f'<span style="font-size:.65rem;padding:.1rem .38rem;border-radius:2px;font-weight:600;font-family:Noto Sans Tamil,sans-serif;background:{bg};color:{fg};border:1px solid {bd};">{gl}</span>' +
+            f'</div>'
+        )
+
+    rows_html = (
+        row("ROUGE-1", "Unigram overlap", r1, "green") +
+        row("ROUGE-2", "Bigram overlap", r2, "blue") +
+        row("ROUGE-L", "Longest common subseq.", rl, "navy") +
+        row("Keyword Coverage", "முக்கிய சொல் உள்ளடக்கம்", kc, "saffron") +
+        row("Lexical Diversity", "சொல் வகை / தனித்தன்மை", ld_s, "red")
     )
 
-    top_kws    = metrics.get("top_keywords", [])
-    covered    = set(metrics.get("covered_keywords", []))
-    kw_chips   = " ".join(
-        f'<span class="kw-chip{"  in-summary" if w in covered else ""}">{w}</span>'
+    top_kws = metrics.get("top_keywords", [])
+    covered = set(metrics.get("covered_keywords", []))
+    kw_chips = "".join(
+        f'<span style="display:inline-block;font-family:Noto Sans Tamil,sans-serif;font-size:.72rem;padding:.1rem .4rem;margin:2px;border-radius:1px;' +
+        ('background:#d4edda;border:1px solid #b8ddc4;color:#155724;">' if w in covered else 'background:#e8f0fa;border:1px solid #b8cce8;color:#003366;">') +
+        f'{w}</span>'
         for w in top_kws[:15]
     )
 
     cr_color = "#1a6b2e" if cr >= 50 else ("#e07b00" if cr >= 25 else "#8b1a1a")
+    n_orig = metrics["n_sents_orig"]
+    n_sum  = metrics["n_sents_sum"]
+    asl    = metrics["avg_sent_len"]
 
     summary_note = (
-        f"சுருக்கம் {metrics['n_sents_sum']} வாக்கியங்களில் "
-        f"{metrics['n_sents_orig']} வாக்கியங்களை {cr:.0f}% குறைத்தது. "
-        f"சராசரி வாக்கிய நீளம் {metrics['avg_sent_len']:.0f} சொற்கள். "
+        f"சுருக்கம் {n_sum} வாக்கியங்களில் {n_orig} வாக்கியங்களை {cr:.0f}% குறைத்தது. "
+        f"சராசரி வாக்கிய நீளம் {asl:.0f} சொற்கள். "
         f"முக்கிய சொற்களில் {len(covered)}/{len(top_kws)} உள்ளடக்கப்பட்டுள்ளன."
     )
+    method_lbl = metrics.get("method", "")
 
-    return f"""
-    <div class="metrics-panel">
-      <div class="metrics-head">📊 சுருக்க மதிப்பீடு | Summary Evaluation</div>
-      <div class="metrics-body">
-        <div class="overall-score-box">
-          <div>
-            <div class="overall-score-num">{overall:.0f}</div>
-            <div class="overall-score-label">ஒட்டுமொத்த மதிப்பெண் | Overall Score (0–100)</div>
-          </div>
-          <div>
-            <span class="overall-score-grade {'grade-A' if overall>=75 else 'grade-B' if overall>=55 else 'grade-C' if overall>=35 else 'grade-D'}"
-                  style="background:{'#d4edda' if overall>=75 else '#d1ecf1' if overall>=55 else '#fff3cd' if overall>=35 else '#f8d7da'};
-                         color:{'#155724' if overall>=75 else '#0c5460' if overall>=55 else '#856404' if overall>=35 else '#721c24'}">
-              {g_lbl}
-            </span>
-            <div style="font-size:.65rem;color:#aabbd4;margin-top:.3rem;font-family:'Noto Sans Tamil',sans-serif">
-              {metrics.get('method','')}
-            </div>
-          </div>
-        </div>
-
-        {rows}
-
-        <div style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.7rem;font-family:'Noto Sans Tamil',sans-serif;color:var(--tn-text2);">
-          <span>அமுக்க விகிதம் | Compression</span>
-          <span style="font-size:1.1rem;font-weight:700;color:{cr_color}">{cr:.1f}%</span>
-          <span style="color:var(--tn-gray3)">({metrics['n_sents_orig']} → {metrics['n_sents_sum']} வாக்கியங்கள்)</span>
-        </div>
-
-        <div class="keywords-box">
-          <div class="kw-label">🔑 முக்கிய சொற்கள் (பச்சை = சுருக்கத்தில் உள்ளன)</div>
-          {kw_chips if kw_chips else '<span style="font-size:.72rem;color:var(--tn-gray3);font-family:\'Noto Sans Tamil\',sans-serif">தமிழ் உரை இல்லை</span>'}
-        </div>
-
-        <div class="metrics-summary-box">
-          📝 {summary_note}
-        </div>
-      </div>
-    </div>"""
+    return (
+        f'<div style="background:#fff;border:1px solid #c5cdd8;border-top:3px solid #003366;margin-top:.6rem;">' +
+        f'<div style="background:#002244;color:white;padding:.5rem .9rem;font-family:Noto Sans Tamil,sans-serif;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">' +
+        f'📊 சுருக்க மதிப்பீடு | Summary Evaluation</div>' +
+        f'<div style="padding:.7rem .8rem;">' +
+        # Overall score box
+        f'<div style="background:#003366;color:white;padding:.6rem .9rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">' +
+        f'<div><div style="font-size:2rem;font-weight:700;font-family:Noto Serif Tamil,serif;">{overall:.0f}</div>' +
+        f'<div style="font-size:.68rem;color:#aabbd4;font-family:Noto Sans Tamil,sans-serif;margin-top:.1rem;">ஒட்டுமொத்த மதிப்பெண் | Overall Score (0–100)</div></div>' +
+        f'<div><span style="font-size:1.1rem;font-weight:700;padding:.3rem .7rem;border-radius:2px;background:{bg_o};color:{fg_o};">{lbl_o}</span>' +
+        f'<div style="font-size:.65rem;color:#aabbd4;margin-top:.3rem;font-family:Noto Sans Tamil,sans-serif;">{method_lbl}</div></div>' +
+        f'</div>' +
+        # Metric rows
+        rows_html +
+        # Compression
+        f'<div style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.7rem;font-family:Noto Sans Tamil,sans-serif;color:#3a4a5a;">' +
+        f'<span>அமுக்க விகிதம் | Compression</span>' +
+        f'<span style="font-size:1.1rem;font-weight:700;color:{cr_color};">{cr:.1f}%</span>' +
+        f'<span style="color:#7a8a99;">({n_orig} → {n_sum} வாக்கியங்கள்)</span></div>' +
+        # Keywords
+        f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;padding:.5rem .7rem;margin-top:.4rem;">' +
+        f'<div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;margin-bottom:.35rem;">🔑 முக்கிய சொற்கள் (பச்சை = சுருக்கத்தில் உள்ளன)</div>' +
+        (kw_chips if kw_chips else '<span style="font-size:.72rem;color:#7a8a99;font-family:Noto Sans Tamil,sans-serif;">தமிழ் உரை இல்லை</span>') +
+        f'</div>' +
+        # Summary note
+        f'<div style="background:#f5f7fa;border:1px solid #e8ecf1;border-left:4px solid #e07b00;padding:.55rem .8rem;margin-top:.5rem;font-size:.74rem;color:#3a4a5a;font-family:Noto Sans Tamil,sans-serif;line-height:1.6;">' +
+        f'📝 {summary_note}</div>' +
+        f'</div></div>'
+    )
 
 # ══════════════════════════════════════════════════════════════════════
 # SESSION STATE
@@ -1328,8 +1359,8 @@ with col_c:
     with tab_summary:
         st.markdown('<div style="margin-top:.5rem">', unsafe_allow_html=True)
 
-        # Pull text from loaded document
-        source_text = " ".join(b["text"] for b in st.session_state.blocks)
+        # Pull text from loaded document — preserve newlines for sentence splitting
+        source_text = "\n".join(b["text"] for b in st.session_state.blocks)
         tamil_words_in_doc = [clean_word(w) for w in source_text.split() if is_tamil_word(w)]
 
         if not source_text.strip():
@@ -1375,7 +1406,7 @@ with col_c:
                 else:
                     summ_ratio = st.slider(
                         "சுருக்க விகிதம் | Compression ratio",
-                        min_value=10, max_value=60, value=30, step=5,
+                        min_value=10, max_value=70, value=40, step=5,
                         format="%d%%", key="summ_ratio_sl", label_visibility="visible",
                     )
             with ctrl3:
