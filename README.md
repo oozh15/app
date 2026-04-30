@@ -1,5 +1,5 @@
 # Tamil Language Assistant
-A Tamil NLP web app built with Python + Streamlit + Claude AI
+A Tamil NLP web app built with Python + Streamlit + AI
 
 ## Features
 - Tamil word meaning search
@@ -7,4 +7,4 @@ A Tamil NLP web app built with Python + Streamlit + Claude AI
 - Tamil dictionary browser
 
 ## Tech Used
-Python, Streamlit, Anthropic Claude API
+Python, Streamlit 
